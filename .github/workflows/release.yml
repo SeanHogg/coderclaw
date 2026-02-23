@@ -1,0 +1,263 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "**/*.mdx"
+      - ".agents/**"
+      - "skills/**"
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          install-bun: "false"
+
+      - name: Build
+        run: pnpm build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-build
+          path: dist/
+          retention-days: 1
+
+      - name: Check package
+        run: pnpm release:check
+
+  publish-npm:
+    needs: [build-and-check]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          install-bun: "false"
+
+      - name: Download dist artifact (if available)
+        id: download-dist
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: dist-build
+          path: dist/
+
+      - name: Build if no dist artifact
+        if: steps.download-dist.outcome == 'failure'
+        run: pnpm build
+
+      - name: Configure npm
+        run: |
+          echo "//registry.npmjs.org/:_authToken=\${NPM_TOKEN}" > .npmrc
+          npm config set scope @${{ github.repository_owner }}
+          npm config list
+
+      - name: Check if this is a new version
+        id: version-check
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "package-version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+
+          if npm view coderclaw@$PACKAGE_VERSION >/dev/null 2>&1; then
+            echo "version-exists=true" >> "$GITHUB_OUTPUT"
+            echo "Version $PACKAGE_VERSION already exists on npm"
+          else
+            echo "version-exists=false" >> "$GITHUB_OUTPUT"
+            echo "Version $PACKAGE_VERSION is new"
+          fi
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to npm
+        if: steps.version-check.outputs.version-exists == 'false'
+        run: npm publish --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
+
+      - name: Update npm latest tag
+        if: startsWith(github.ref, 'refs/tags/') && steps.version-check.outputs.version-exists == 'false'
+        run: npm dist-tag add coderclaw@$(node -p "require('./package.json').version") latest
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  build-amd64:
+    needs: [build-and-check]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    permissions:
+      packages: write
+      contents: read
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-metadata: ${{ steps.meta.outputs.json }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare lowercase image name
+        id: image_name
+        run: echo "lowercase=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{version}},suffix=-amd64
+            type=semver,pattern={{version}},suffix=-arm64
+            type=ref,event=branch,suffix=-amd64
+            type=ref,event=branch,suffix=-arm64
+
+      - name: Build and push amd64 image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image_name.outputs.lowercase }}-cache:amd64
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image_name.outputs.lowercase }}-cache:amd64,mode=max
+          provenance: false
+          push: true
+
+  build-arm64:
+    needs: [build-and-check]
+    runs-on: ubuntu-24.04-arm
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    permissions:
+      packages: write
+      contents: read
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-metadata: ${{ steps.meta.outputs.json }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare lowercase image name
+        id: image_name
+        run: echo "lowercase=$(echo '${{ env.IMAGE_NAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{version}},suffix=-amd64
+            type=semver,pattern={{version}},suffix=-arm64
+            type=ref,event=branch,suffix=-amd64
+            type=ref,event=branch,suffix=-arm64
+
+      - name: Build and push arm64 image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image_name.outputs.lowercase }}-cache:arm64
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image_name.outputs.lowercase }}-cache:arm64,mode=max
+          provenance: false
+          push: true
+
+  create-manifest:
+    needs: [build-amd64, build-arm64]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for manifest
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+
+      - name: Create and push manifest
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            ${{ needs.build-amd64.outputs.image-digest }} \
+            ${{ needs.build-arm64.outputs.image-digest }}
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
