@@ -183,6 +183,8 @@ jobs:
 
       - name: Build dist
         run: pnpm build
+        env:
+          CODERCLAW_A2UI_SKIP_MISSING: "1"
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4
