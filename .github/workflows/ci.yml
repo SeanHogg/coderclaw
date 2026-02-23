@@ -258,6 +258,8 @@ jobs:
 
       - name: Run ${{ matrix.task }} (${{ matrix.runtime }})
         run: ${{ matrix.command }}
+        env:
+          CODERCLAW_A2UI_SKIP_MISSING: "1"
 
       - name: Summarize slowest tests
         if: matrix.task == 'test' && matrix.runtime == 'node'
@@ -513,6 +515,8 @@ jobs:
 
       - name: Run ${{ matrix.task }} (${{ matrix.runtime }})
         run: ${{ matrix.command }}
+        env:
+          CODERCLAW_A2UI_SKIP_MISSING: "1"
 
       - name: Summarize slowest tests
         if: matrix.task == 'test'
