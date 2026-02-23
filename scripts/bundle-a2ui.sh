@@ -15,9 +15,16 @@ A2UI_APP_DIR="$ROOT_DIR/apps/shared/CoderClawKit/Tools/CanvasA2UI"
 
 # Docker builds exclude vendor/apps via .dockerignore.
 # In that environment we can keep a prebuilt bundle only if it exists.
+# CI builds set CODERCLAW_A2UI_SKIP_MISSING=1 to skip bundling entirely
+# (no prebuilt bundle is committed; the canvas feature is omitted from the dist).
 if [[ ! -d "$A2UI_RENDERER_DIR" || ! -d "$A2UI_APP_DIR" ]]; then
   if [[ -f "$OUTPUT_FILE" ]]; then
     echo "A2UI sources missing; keeping prebuilt bundle."
+    exit 0
+  fi
+  # No prebuilt bundle — skip only if explicitly allowed (e.g. CI without vendor sources).
+  if [[ "${CODERCLAW_A2UI_SKIP_MISSING:-}" == "1" ]]; then
+    echo "A2UI sources missing; skipping bundle (CODERCLAW_A2UI_SKIP_MISSING=1)."
     exit 0
   fi
   echo "A2UI sources missing and no prebuilt bundle found at: $OUTPUT_FILE" >&2
