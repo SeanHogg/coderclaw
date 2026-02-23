@@ -8,7 +8,7 @@ plugins {
 }
 
 android {
-  namespace = "ai.openclaw.android"
+  namespace = "ai.coderclaw.android"
   compileSdk = 36
 
   sourceSets {
@@ -18,7 +18,7 @@ android {
   }
 
   defaultConfig {
-    applicationId = "ai.openclaw.android"
+    applicationId = "ai.coderclaw.android"
     minSdk = 31
     targetSdk = 36
     versionCode = 202602200

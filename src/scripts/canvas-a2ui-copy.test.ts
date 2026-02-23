@@ -1,10 +1,25 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { copyA2uiAssets } from "../../scripts/canvas-a2ui-copy.js";
 
 describe("canvas a2ui copy", () => {
+  let savedSkipMissing: string | undefined;
+
+  beforeEach(() => {
+    savedSkipMissing = process.env.CODERCLAW_A2UI_SKIP_MISSING;
+    delete process.env.CODERCLAW_A2UI_SKIP_MISSING;
+  });
+
+  afterEach(() => {
+    if (savedSkipMissing !== undefined) {
+      process.env.CODERCLAW_A2UI_SKIP_MISSING = savedSkipMissing;
+    } else {
+      delete process.env.CODERCLAW_A2UI_SKIP_MISSING;
+    }
+  });
+
   it("throws a helpful error when assets are missing", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "coderclaw-a2ui-"));
 
