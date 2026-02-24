@@ -399,6 +399,12 @@ export function buildAllowedModelSet(params: {
       // Explicitly configured providers should be allowlist-able even when
       // they don't exist in the curated model catalog.
       allowedKeys.add(key);
+    } else {
+      // If a model is explicitly listed in agents.defaults.models, allow it
+      // even if it's not in the catalog or configured providers. This enables
+      // model scanning/free tier experimentation without requiring explicit
+      // provider configuration first.
+      allowedKeys.add(key);
     }
   }
 

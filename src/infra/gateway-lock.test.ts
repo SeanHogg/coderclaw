@@ -16,13 +16,17 @@ async function makeEnv() {
   const configPath = path.join(dir, "coderclaw.json");
   await fs.writeFile(configPath, "{}", "utf8");
   await fs.mkdir(resolveGatewayLockDir(), { recursive: true });
+  const env = {
+    ...process.env,
+    CODERCLAW_STATE_DIR: dir,
+    CODERCLAW_CONFIG_PATH: configPath,
+  };
+  const { lockPath } = resolveLockPath(env);
   return {
-    env: {
-      ...process.env,
-      CODERCLAW_STATE_DIR: dir,
-      CODERCLAW_CONFIG_PATH: configPath,
+    env,
+    cleanup: async () => {
+      await fs.rm(lockPath, { force: true });
     },
-    cleanup: async () => {},
   };
 }
 
@@ -97,8 +101,20 @@ describe("gateway lock", () => {
     await fs.rm(fixtureRoot, { recursive: true, force: true });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
+    // Clean up any leftover lock files to prevent flaky failures
+    try {
+      const lockDir = resolveGatewayLockDir();
+      const files = await fs.readdir(lockDir);
+      for (const file of files) {
+        if (file.startsWith("gateway.") && file.endsWith(".lock")) {
+          await fs.rm(path.join(lockDir, file), { force: true });
+        }
+      }
+    } catch {
+      // Lock directory may not exist or be inaccessible
+    }
   });
 
   it("blocks concurrent acquisition until release", async () => {
