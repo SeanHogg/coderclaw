@@ -322,6 +322,12 @@ export async function applySessionsPatchToStore(params: {
         },
       });
     }
+    // Clear runtime model fields so that resolveSessionModelRef will use the overrides.
+    // The runtime model/modelProvider are only valid after an actual execution run,
+    // so when the user patches the model via the TUI, we clear them to ensure the new
+    // selection is reflected immediately.
+    delete next.model;
+    delete next.modelProvider;
   }
 
   if (next.thinkingLevel === "xhigh") {
