@@ -88,11 +88,16 @@ jobs:
         env:
           CODERCLAW_A2UI_SKIP_MISSING: "1"
 
-      - name: Configure npm
-        run: |
-          echo "//registry.npmjs.org/:_authToken=\${NPM_TOKEN}" > .npmrc
-          npm config set scope @${{ github.repository_owner }}
-          npm config list
+      - name: Setup Node.js for npm publish
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Validate npm token
+        run: npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Check if this is a new version
         id: version-check
@@ -107,14 +112,12 @@ jobs:
             echo "version-exists=false" >> "$GITHUB_OUTPUT"
             echo "Version $PACKAGE_VERSION is new"
           fi
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish to npm
         if: steps.version-check.outputs.version-exists == 'false'
         run: npm publish --access public
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           CODERCLAW_A2UI_SKIP_MISSING: "1"
 
       - name: Create GitHub Release
@@ -132,7 +135,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') && steps.version-check.outputs.version-exists == 'false'
         run: npm dist-tag add coderclaw@$(node -p "require('./package.json').version") latest
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   build-amd64:
     needs: [build-and-check]
