@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { Component, TUI } from "@mariozechner/pi-tui";
 import {
@@ -44,7 +45,51 @@ type CommandHandlerContext = {
   noteLocalRunId: (runId: string) => void;
   forgetLocalRunId?: (runId: string) => void;
   onSetup?: () => Promise<void>;
+  runGatewayServiceCommand?: (action: "status" | "start" | "stop" | "restart") => Promise<{
+    ok: boolean;
+    lines: string[];
+  }>;
 };
+
+async function executeGatewayServiceCommand(
+  action: "status" | "start" | "stop" | "restart",
+): Promise<{ ok: boolean; lines: string[] }> {
+  return await new Promise((resolve) => {
+    const args = [process.argv[1], "gateway", action, "--json"];
+    const child = spawn(process.execPath, args, {
+      cwd: process.cwd(),
+      env: process.env,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (buf) => {
+      stdout = (stdout + buf.toString("utf8")).slice(-20_000);
+    });
+    child.stderr.on("data", (buf) => {
+      stderr = (stderr + buf.toString("utf8")).slice(-20_000);
+    });
+
+    child.on("close", (code, signal) => {
+      const lines = [stdout, stderr]
+        .filter(Boolean)
+        .join("\n")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (signal) {
+        lines.push(`terminated by signal ${String(signal)}`);
+      }
+      resolve({ ok: code === 0, lines });
+    });
+
+    child.on("error", (err) => {
+      resolve({ ok: false, lines: [String(err)] });
+    });
+  });
+}
 
 export function createCommandHandlers(context: CommandHandlerContext) {
   const {
@@ -67,7 +112,10 @@ export function createCommandHandlers(context: CommandHandlerContext) {
     noteLocalRunId,
     forgetLocalRunId,
     onSetup,
+    runGatewayServiceCommand,
   } = context;
+
+  const runServiceCommand = runGatewayServiceCommand ?? executeGatewayServiceCommand;
 
   const setAgent = async (id: string) => {
     state.currentAgentId = normalizeAgentId(id);
@@ -451,6 +499,31 @@ export function createCommandHandlers(context: CommandHandlerContext) {
       case "settings":
         openSettings();
         break;
+      case "gateway":
+      case "daemon": {
+        const actionRaw = args.trim().toLowerCase();
+        if (!actionRaw) {
+          chatLog.addSystem("usage: /gateway <status|start|stop|restart>");
+          break;
+        }
+        if (!["status", "start", "stop", "restart"].includes(actionRaw)) {
+          chatLog.addSystem("usage: /gateway <status|start|stop|restart>");
+          break;
+        }
+        const action = actionRaw as "status" | "start" | "stop" | "restart";
+        chatLog.addSystem(`running: coderclaw gateway ${action}`);
+        tui.requestRender();
+        const result = await runServiceCommand(action);
+        if (result.lines.length > 0) {
+          for (const line of result.lines) {
+            chatLog.addSystem(line);
+          }
+        }
+        if (!result.ok) {
+          chatLog.addSystem(`gateway ${action} failed`);
+        }
+        break;
+      }
       case "exit":
       case "quit":
         client.stop();

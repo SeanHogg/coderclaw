@@ -2,6 +2,15 @@
 
 Docs: https://docs.coderclaw.ai
 
+## 2026.2.23-beta.8
+
+### Changes
+
+- Release: version bump to beta.8 with extension versions synced.
+- TUI: add `/gateway <status|start|stop|restart>` and `/daemon <status|start|stop|restart>` commands to mirror CLI service controls.
+- CI/Containers: set `CODERCLAW_A2UI_SKIP_MISSING=1` for Docker build and npm publish workflow paths that run prepack builds without A2UI sources.
+- Tests: update reply media-note and raw-body assertions to handle the new-session banner when verbose defaults are enabled.
+
 ## 2026.2.23-beta.7
 
 ### Changes

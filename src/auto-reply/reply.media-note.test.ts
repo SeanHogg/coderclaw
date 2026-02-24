@@ -66,8 +66,9 @@ describe("getReplyFromConfig media note plumbing", () => {
         cfg,
       );
 
-      const text = Array.isArray(res) ? res[0]?.text : res?.text;
-      expect(text).toBe("ok");
+      const payloads = Array.isArray(res) ? res : [res];
+      const texts = payloads.map((p) => p?.text).filter((text): text is string => !!text);
+      expect(texts).toContain("ok");
       expect(seenPrompt).toBeTruthy();
       expect(seenPrompt).toContain("[media attached: 2 files]");
       const idxA = seenPrompt?.indexOf("[media attached 1/2: /tmp/a.png");

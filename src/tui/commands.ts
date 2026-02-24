@@ -23,6 +23,7 @@ export type SlashCommandOptions = {
 const COMMAND_ALIASES: Record<string, string> = {
   elev: "elevated",
   onboard: "setup",
+  service: "gateway",
 };
 
 export function parseCommand(input: string): ParsedCommand {
@@ -118,6 +119,8 @@ export function getSlashCommands(options: SlashCommandOptions = {}): SlashComman
     { name: "new", description: "Reset the session" },
     { name: "reset", description: "Reset the session" },
     { name: "settings", description: "Open settings" },
+    { name: "gateway", description: "Gateway service control (status/start/stop/restart)" },
+    { name: "daemon", description: "Alias for /gateway" },
     { name: "exit", description: "Exit the TUI" },
     { name: "quit", description: "Exit the TUI" },
     { name: "setup", description: "Run the setup/onboarding wizard" },
@@ -161,6 +164,8 @@ export function helpText(options: SlashCommandOptions = {}): string {
     "/new or /reset",
     "/abort",
     "/settings",
+    "/gateway <status|start|stop|restart>",
+    "/daemon <status|start|stop|restart>",
     "/exit",
     "/setup or /onboard",
   ].join("\n");

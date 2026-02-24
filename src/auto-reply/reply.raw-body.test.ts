@@ -77,8 +77,9 @@ describe("RawBody directive parsing", () => {
         makeReplyConfig(home) as CoderClawConfig,
       );
 
-      const text = Array.isArray(res) ? res[0]?.text : res?.text;
-      expect(text).toBe("ok");
+      const payloads = Array.isArray(res) ? res : [res];
+      const texts = payloads.map((p) => p?.text).filter((text): text is string => !!text);
+      expect(texts).toContain("ok");
       expect(agentMocks.runEmbeddedPiAgent).toHaveBeenCalledOnce();
       const prompt =
         (agentMocks.runEmbeddedPiAgent.mock.calls[0]?.[0] as { prompt?: string } | undefined)

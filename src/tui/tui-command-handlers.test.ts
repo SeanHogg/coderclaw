@@ -83,4 +83,79 @@ describe("tui command handlers", () => {
     expect(resetSession).toHaveBeenNthCalledWith(2, "agent:main:main", "reset");
     expect(loadHistory).toHaveBeenCalledTimes(2);
   });
+
+  it("runs /gateway restart via service command runner", async () => {
+    const addSystem = vi.fn();
+    const requestRender = vi.fn();
+    const runGatewayServiceCommand = vi.fn().mockResolvedValue({
+      ok: true,
+      lines: ["restarted"],
+    });
+
+    const { handleCommand } = createCommandHandlers({
+      client: {} as never,
+      chatLog: { addSystem } as never,
+      tui: { requestRender } as never,
+      opts: {},
+      state: {
+        currentSessionKey: "agent:main:main",
+        activeChatRunId: null,
+        sessionInfo: {},
+      } as never,
+      deliverDefault: false,
+      openOverlay: vi.fn(),
+      closeOverlay: vi.fn(),
+      refreshSessionInfo: vi.fn(),
+      loadHistory: vi.fn(),
+      setSession: vi.fn(),
+      refreshAgents: vi.fn(),
+      abortActive: vi.fn(),
+      setActivityStatus: vi.fn(),
+      formatSessionKey: vi.fn(),
+      applySessionInfoFromPatch: vi.fn(),
+      noteLocalRunId: vi.fn(),
+      runGatewayServiceCommand,
+    });
+
+    await handleCommand("/gateway restart");
+
+    expect(runGatewayServiceCommand).toHaveBeenCalledWith("restart");
+    expect(addSystem).toHaveBeenCalledWith("running: coderclaw gateway restart");
+    expect(addSystem).toHaveBeenCalledWith("restarted");
+  });
+
+  it("treats /daemon as alias for /gateway", async () => {
+    const addSystem = vi.fn();
+    const runGatewayServiceCommand = vi.fn().mockResolvedValue({ ok: true, lines: [] });
+
+    const { handleCommand } = createCommandHandlers({
+      client: {} as never,
+      chatLog: { addSystem } as never,
+      tui: { requestRender: vi.fn() } as never,
+      opts: {},
+      state: {
+        currentSessionKey: "agent:main:main",
+        activeChatRunId: null,
+        sessionInfo: {},
+      } as never,
+      deliverDefault: false,
+      openOverlay: vi.fn(),
+      closeOverlay: vi.fn(),
+      refreshSessionInfo: vi.fn(),
+      loadHistory: vi.fn(),
+      setSession: vi.fn(),
+      refreshAgents: vi.fn(),
+      abortActive: vi.fn(),
+      setActivityStatus: vi.fn(),
+      formatSessionKey: vi.fn(),
+      applySessionInfoFromPatch: vi.fn(),
+      noteLocalRunId: vi.fn(),
+      runGatewayServiceCommand,
+    });
+
+    await handleCommand("/daemon status");
+
+    expect(runGatewayServiceCommand).toHaveBeenCalledWith("status");
+    expect(addSystem).toHaveBeenCalledWith("running: coderclaw gateway status");
+  });
 });

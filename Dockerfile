@@ -44,6 +44,7 @@ RUN if [ -n "$CODERCLAW_INSTALL_BROWSER" ]; then \
 
 USER node
 COPY --chown=node:node . .
+ENV CODERCLAW_A2UI_SKIP_MISSING=1
 RUN pnpm build
 # Force pnpm for UI build (Bun may fail on ARM/Synology architectures)
 ENV CODERCLAW_PREFER_PNPM=1
