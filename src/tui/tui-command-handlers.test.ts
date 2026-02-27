@@ -158,4 +158,50 @@ describe("tui command handlers", () => {
     expect(runGatewayServiceCommand).toHaveBeenCalledWith("status");
     expect(addSystem).toHaveBeenCalledWith("running: coderclaw gateway status");
   });
+
+  it("runs models set and updates state for /model command", async () => {
+    const addSystem = vi.fn();
+    const patchSession = vi.fn().mockResolvedValue({ ok: true });
+    const runLocalCliCommand = vi.fn().mockResolvedValue({ ok: true, lines: [] });
+    const sessionInfo: Record<string, unknown> = {};
+
+    const { handleCommand } = createCommandHandlers({
+      client: { patchSession } as never,
+      chatLog: { addSystem } as never,
+      tui: { requestRender: vi.fn() } as never,
+      opts: {},
+      state: {
+        currentSessionKey: "agent:main:main",
+        activeChatRunId: null,
+        sessionInfo,
+      } as never,
+      deliverDefault: false,
+      openOverlay: vi.fn(),
+      closeOverlay: vi.fn(),
+      refreshSessionInfo: vi.fn(),
+      loadHistory: vi.fn(),
+      setSession: vi.fn(),
+      refreshAgents: vi.fn(),
+      abortActive: vi.fn(),
+      setActivityStatus: vi.fn(),
+      formatSessionKey: vi.fn(),
+      applySessionInfoFromPatch: vi.fn(),
+      updateFooter: vi.fn(),
+      noteLocalRunId: vi.fn(),
+      runLocalCliCommand,
+    });
+
+    await handleCommand("/model openrouter/google/gemma-3-27b-it:free");
+
+    // Should run `models set` to update config + allowlist
+    expect(runLocalCliCommand).toHaveBeenCalledWith([
+      "models",
+      "set",
+      "openrouter/google/gemma-3-27b-it:free",
+    ]);
+    // State should be updated immediately with the new model
+    expect(sessionInfo.modelProvider).toBe("openrouter");
+    expect(sessionInfo.model).toBe("google/gemma-3-27b-it:free");
+    expect(addSystem).toHaveBeenCalledWith("model set to openrouter/google/gemma-3-27b-it:free");
+  });
 });

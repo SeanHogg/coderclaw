@@ -722,6 +722,7 @@ export async function runTui(opts: TuiOptions) {
       closeOverlay,
       refreshSessionInfo,
       applySessionInfoFromPatch,
+      updateFooter,
       loadHistory,
       setSession,
       refreshAgents,
@@ -813,6 +814,7 @@ export async function runTui(opts: TuiOptions) {
     void (async () => {
       await refreshAgents();
       updateHeader();
+      await refreshSessionInfo();
       await loadHistory();
       setConnectionStatus(reconnected ? "gateway reconnected" : "gateway connected", 4000);
       tui.requestRender();

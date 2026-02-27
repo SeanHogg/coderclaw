@@ -18,6 +18,7 @@ import {
 } from "../auto-reply/thinking.js";
 import type { CoderClawConfig } from "../config/config.js";
 import type { SessionEntry } from "../config/sessions.js";
+import { logDebug, logWarn } from "../logger.js";
 import {
   isSubagentSessionKey,
   normalizeAgentId,
@@ -300,6 +301,9 @@ export async function applySessionsPatchToStore(params: {
         };
       }
       const catalog = await params.loadGatewayModelCatalog();
+      logDebug(
+        `[sessions-patch] model patch: raw="${trimmed}" defaultProvider=${resolvedDefault.provider} defaultModel=${resolvedDefault.model} catalogSize=${catalog.length} allowlistKeys=[${Object.keys(cfg.agents?.defaults?.models ?? {}).join(", ")}]`,
+      );
       const resolved = resolveAllowedModelRef({
         cfg,
         catalog,
@@ -308,8 +312,14 @@ export async function applySessionsPatchToStore(params: {
         defaultModel: subagentModelHint ?? resolvedDefault.model,
       });
       if ("error" in resolved) {
+        logWarn(
+          `[sessions-patch] model patch REJECTED: raw="${trimmed}" error="${resolved.error}"`,
+        );
         return invalid(resolved.error);
       }
+      logDebug(
+        `[sessions-patch] model patch ACCEPTED: raw="${trimmed}" → ${resolved.ref.provider}/${resolved.ref.model} key=${resolved.key}`,
+      );
       const isDefault =
         resolved.ref.provider === resolvedDefault.provider &&
         resolved.ref.model === resolvedDefault.model;

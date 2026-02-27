@@ -28,6 +28,8 @@ const palette = {
   code: "#F0C987",
   codeBlock: "#1E232A",
   codeBorder: "#343A45",
+  modalBorder: "#4D8DFF",
+  modalBg: "#171A20",
   link: "#7DD3A5",
   error: "#F97066",
   success: "#7DD3A5",
@@ -76,7 +78,9 @@ export const theme = {
   toolPendingBg: bg(palette.toolPendingBg),
   toolSuccessBg: bg(palette.toolSuccessBg),
   toolErrorBg: bg(palette.toolErrorBg),
+  modalBg: bg(palette.modalBg),
   border: fg(palette.border),
+  modalBorder: fg(palette.modalBorder),
   bold: (text: string) => chalk.bold(text),
   italic: (text: string) => chalk.italic(text),
 };

@@ -382,7 +382,7 @@ export function buildStatusMessage(args: StatusArgs): string {
   }
 
   const thinkLevel = args.resolvedThink ?? args.agent?.thinkingDefault ?? "off";
-  const verboseLevel = args.resolvedVerbose ?? args.agent?.verboseDefault ?? "off";
+  const verboseLevel = args.resolvedVerbose ?? args.agent?.verboseDefault ?? "on";
   const reasoningLevel = args.resolvedReasoning ?? "off";
   const elevatedLevel =
     args.resolvedElevated ??

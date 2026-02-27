@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026.2.27-beta.1
+
+### Changes
+
+- TUI: add `/logs [count]` command to view gateway log lines directly in the TUI (default 50, max 500).
+- TUI: add diagnostic logging to model selection, session patching, and TUI command handlers for easier debugging.
+
+### Fixes
+
+- TUI: fix "model not allowed" error when switching models via `/model` after OpenRouter setup — use `model: null` session patch to clear override without allowlist validation.
+- TUI: fix footer not updating after model change — call `updateFooter()` after immediate state update.
+- TUI: fix model selection not persisting across gateway reconnects — session patch clears override so `resolveSessionModelRef` falls through to config defaults set by `models set`.
+
+Docs: https://docs.coderclaw.ai
+
 ## 2026.2.26
 
 ### Changes

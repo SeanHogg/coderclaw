@@ -223,6 +223,16 @@ export class GatewayChatClient {
     const res = await this.client.request<{ models?: GatewayModelChoice[] }>("models.list");
     return Array.isArray(res?.models) ? res.models : [];
   }
+
+  async fetchLogs(opts?: { limit?: number }): Promise<{ lines: string[]; file?: string }> {
+    const res = await this.client.request<{ lines?: string[]; file?: string }>("logs.tail", {
+      limit: opts?.limit ?? 50,
+    });
+    return {
+      lines: Array.isArray(res?.lines) ? res.lines : [],
+      file: res?.file,
+    };
+  }
 }
 
 export function resolveGatewayConnection(opts: GatewayConnectionOptions) {

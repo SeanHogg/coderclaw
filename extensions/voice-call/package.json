@@ -1,6 +1,6 @@
 {
   "name": "@coderclaw/voice-call",
-  "version": "2026.2.26",
+  "version": "2026.2.27-beta.1",
   "description": "CoderClaw voice-call plugin",
   "type": "module",
   "dependencies": {

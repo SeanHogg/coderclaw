@@ -95,4 +95,78 @@ describe("resolveAllowedModelRef", () => {
     }
     expect(result.key).toBe("anthropic/claude-opus-4-5");
   });
+
+  it("allows models for configured providers when allowlist is non-empty", () => {
+    const cfg: CoderClawConfig = {
+      agents: {
+        defaults: {
+          models: {
+            "anthropic/claude-opus-4-5": {},
+          },
+        },
+      },
+      models: {
+        providers: {
+          openrouter: {
+            apiKey: "test-key",
+          },
+        },
+      },
+    };
+
+    const catalog = [
+      { provider: "anthropic", id: "claude-opus-4-5", name: "Claude Opus 4.5" },
+      { provider: "openai", id: "gpt-4o", name: "GPT-4o" },
+    ];
+
+    const result = resolveAllowedModelRef({
+      cfg,
+      catalog,
+      raw: "openrouter/google/gemma-3-27b-it:free",
+      defaultProvider: "openrouter",
+    });
+
+    if ("error" in result) {
+      throw new Error(`Expected success for configured provider, got: ${result.error}`);
+    }
+    expect(result.key).toBe("openrouter/google/gemma-3-27b-it:free");
+  });
+
+  it("treats openrouter namespaced model IDs as openrouter when default provider is openrouter", () => {
+    const cfg: CoderClawConfig = {
+      agents: {
+        defaults: {
+          models: {
+            "openrouter/nvidia/nemotron-3-nano-30b-a3b:free": {},
+          },
+        },
+      },
+      models: {
+        providers: {
+          openrouter: {
+            apiKey: "test-key",
+          },
+        },
+      },
+    };
+
+    const catalog = [
+      { provider: "anthropic", id: "claude-opus-4-5", name: "Claude Opus 4.5" },
+      { provider: "openai", id: "gpt-4o", name: "GPT-4o" },
+    ];
+
+    const result = resolveAllowedModelRef({
+      cfg,
+      catalog,
+      raw: "opencode/glm-5-free",
+      defaultProvider: "openrouter",
+    });
+
+    if ("error" in result) {
+      throw new Error(`Expected success for openrouter namespaced model, got: ${result.error}`);
+    }
+    expect(result.key).toBe("openrouter/opencode/glm-5-free");
+    expect(result.ref.provider).toBe("openrouter");
+    expect(result.ref.model).toBe("opencode/glm-5-free");
+  });
 });

@@ -1,4 +1,5 @@
 import type { CoderClawConfig } from "../config/config.js";
+import { logDebug, logWarn } from "../logger.js";
 import { resolveAgentConfig, resolveAgentModelPrimary } from "./agent-scope.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "./defaults.js";
 import type { ModelCatalogEntry } from "./model-catalog.js";
@@ -363,6 +364,9 @@ export function buildAllowedModelSet(params: {
     return Object.keys(modelMap);
   })();
   const allowAny = rawAllowlist.length === 0;
+  logDebug(
+    `[model-selection] buildAllowedModelSet: rawAllowlist=[${rawAllowlist.join(", ")}] allowAny=${allowAny} defaultProvider=${params.defaultProvider} defaultModel=${params.defaultModel ?? "(none)"}`,
+  );
   const defaultModel = params.defaultModel?.trim();
   const defaultRef =
     defaultModel && params.defaultProvider
@@ -451,11 +455,28 @@ export function getModelRefStatus(params: {
     defaultModel: params.defaultModel,
   });
   const key = modelKey(params.ref.provider, params.ref.model);
+  const configuredProviderKey = findNormalizedProviderKey(
+    (params.cfg.models?.providers ?? {}) as Record<string, unknown>,
+    params.ref.provider,
+  );
+  const inCatalog = params.catalog.some((entry) => modelKey(entry.provider, entry.id) === key);
+  const inAllowedKeys = allowed.allowedKeys.has(key);
+  const hasConfiguredProvider = Boolean(configuredProviderKey);
+  const isCli = isCliProvider(params.ref.provider, params.cfg);
+  const isAllowed = allowed.allowAny || inAllowedKeys || hasConfiguredProvider || isCli;
+  logDebug(
+    `[model-selection] getModelRefStatus: key=${key} inCatalog=${inCatalog} allowAny=${allowed.allowAny} inAllowedKeys=${inAllowedKeys} hasConfiguredProvider=${hasConfiguredProvider} (${configuredProviderKey ?? "none"}) isCli=${isCli} → allowed=${isAllowed}`,
+  );
+  if (!isAllowed) {
+    logWarn(
+      `[model-selection] model REJECTED: ${key} — allowedKeys=[${[...allowed.allowedKeys].join(", ")}] configuredProviders=[${Object.keys((params.cfg.models?.providers ?? {}) as Record<string, unknown>).join(", ")}]`,
+    );
+  }
   return {
     key,
-    inCatalog: params.catalog.some((entry) => modelKey(entry.provider, entry.id) === key),
+    inCatalog,
     allowAny: allowed.allowAny,
-    allowed: allowed.allowAny || allowed.allowedKeys.has(key),
+    allowed: isAllowed,
   };
 }
 
@@ -484,6 +505,9 @@ export function resolveAllowedModelRef(params: {
     defaultProvider: params.defaultProvider,
     aliasIndex,
   });
+  logDebug(
+    `[model-selection] resolveAllowedModelRef: raw="${trimmed}" defaultProvider=${params.defaultProvider} → resolved=${resolved ? `${resolved.ref.provider}/${resolved.ref.model}` : "null"}`,
+  );
   if (!resolved) {
     return { error: `invalid model: ${trimmed}` };
   }
@@ -495,7 +519,34 @@ export function resolveAllowedModelRef(params: {
     defaultProvider: params.defaultProvider,
     defaultModel: params.defaultModel,
   });
+  const openRouterFallbackStatus =
+    !status.allowed &&
+    normalizeProviderId(params.defaultProvider) === "openrouter" &&
+    !trimmed.toLowerCase().startsWith("openrouter/") &&
+    trimmed.includes("/")
+      ? getModelRefStatus({
+          cfg: params.cfg,
+          catalog: params.catalog,
+          ref: normalizeModelRef("openrouter", trimmed),
+          defaultProvider: params.defaultProvider,
+          defaultModel: params.defaultModel,
+        })
+      : undefined;
+
+  if (openRouterFallbackStatus?.allowed) {
+    logDebug(
+      `[model-selection] resolveAllowedModelRef: OpenRouter fallback succeeded for "${trimmed}" → openrouter/${trimmed}`,
+    );
+    return {
+      ref: normalizeModelRef("openrouter", trimmed),
+      key: openRouterFallbackStatus.key,
+    };
+  }
+
   if (!status.allowed) {
+    logWarn(
+      `[model-selection] resolveAllowedModelRef FAILED: raw="${trimmed}" resolvedKey=${status.key} allowed=false (openRouterFallback=${openRouterFallbackStatus ? `tried,allowed=${openRouterFallbackStatus.allowed}` : "skipped"})`,
+    );
     return { error: `model not allowed: ${status.key}` };
   }
 

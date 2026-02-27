@@ -37,7 +37,12 @@ describe("createOverlayHandlers", () => {
     const overlay = new DummyComponent();
 
     openOverlay(overlay);
-    expect(showOverlay).toHaveBeenCalledWith(overlay);
+    expect(showOverlay).toHaveBeenCalledTimes(1);
+    const wrapped = showOverlay.mock.calls[0]?.[0] as Component | undefined;
+    expect(wrapped).toBeDefined();
+    expect(wrapped).not.toBe(overlay);
+    expect(wrapped?.render(12)[0]).toContain("┌");
+    expect(wrapped?.render(12).at(-1)).toContain("┘");
 
     closeOverlay();
     expect(hideOverlay).toHaveBeenCalledTimes(1);

@@ -9,6 +9,7 @@ import {
 import { initializeCoderClawProject } from "../coderclaw/project-context.js";
 import type { SessionsPatchResult } from "../gateway/protocol/index.js";
 import { formatRelativeTimestamp } from "../infra/format-time/format-relative.ts";
+import { logDebug, logWarn } from "../logger.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { helpText, parseCommand } from "./commands.js";
 import type { ChatLog } from "./components/chat-log.js";
@@ -43,6 +44,7 @@ type CommandHandlerContext = {
   setActivityStatus: (text: string) => void;
   formatSessionKey: (key: string) => string;
   applySessionInfoFromPatch: (result: SessionsPatchResult) => void;
+  updateFooter?: () => void;
   noteLocalRunId: (runId: string) => void;
   forgetLocalRunId?: (runId: string) => void;
   onSetup?: () => Promise<void>;
@@ -50,6 +52,7 @@ type CommandHandlerContext = {
     ok: boolean;
     lines: string[];
   }>;
+  runLocalCliCommand?: (args: string[]) => Promise<{ ok: boolean; lines: string[] }>;
 };
 
 async function executeGatewayServiceCommand(
@@ -58,6 +61,43 @@ async function executeGatewayServiceCommand(
   return await new Promise((resolve) => {
     const args = [process.argv[1], "gateway", action, "--json"];
     const child = spawn(process.execPath, args, {
+      cwd: process.cwd(),
+      env: process.env,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (buf) => {
+      stdout = (stdout + buf.toString("utf8")).slice(-20_000);
+    });
+    child.stderr.on("data", (buf) => {
+      stderr = (stderr + buf.toString("utf8")).slice(-20_000);
+    });
+
+    child.on("close", (code, signal) => {
+      const lines = [stdout, stderr]
+        .filter(Boolean)
+        .join("\n")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (signal) {
+        lines.push(`terminated by signal ${String(signal)}`);
+      }
+      resolve({ ok: code === 0, lines });
+    });
+
+    child.on("error", (err) => {
+      resolve({ ok: false, lines: [String(err)] });
+    });
+  });
+}
+
+async function executeLocalCliCommand(args: string[]): Promise<{ ok: boolean; lines: string[] }> {
+  return await new Promise((resolve) => {
+    const child = spawn(process.execPath, [process.argv[1], ...args], {
       cwd: process.cwd(),
       env: process.env,
       windowsHide: true,
@@ -114,9 +154,90 @@ export function createCommandHandlers(context: CommandHandlerContext) {
     forgetLocalRunId,
     onSetup,
     runGatewayServiceCommand,
+    runLocalCliCommand,
+    updateFooter,
   } = context;
 
   const runServiceCommand = runGatewayServiceCommand ?? executeGatewayServiceCommand;
+  const runCliCommand = runLocalCliCommand ?? executeLocalCliCommand;
+
+  const formatModelSetError = (err: unknown): string => {
+    const message = String(err);
+    if (message.toLowerCase().includes("model not allowed:")) {
+      return `${message} (add it to allowlist with: coderclaw models set <provider/model>, then retry /models)`;
+    }
+    return message;
+  };
+
+  const patchSessionModel = async (model: string): Promise<void> => {
+    // Step 1: Always run `coderclaw models set` first. This is the canonical way
+    // to change models — it updates the default in config AND adds the model to
+    // the allowlist. Without this, `sessions.patch` will reject models that
+    // aren't already in the allowlist.
+    chatLog.addSystem(`setting default model to ${model}...`);
+    logDebug(`[tui-model] patchSessionModel: running "models set ${model}"`);
+    const setResult = await runCliCommand(["models", "set", model]);
+    if (!setResult.ok) {
+      const detail = setResult.lines.join(" | ");
+      logWarn(`[tui-model] models set FAILED: ${detail || "unknown error"}`);
+      throw new Error(`failed to set model: ${detail || "unknown error"}`);
+    }
+    logDebug(`[tui-model] models set OK: ${setResult.lines.join(" | ")}`);
+
+    // Step 2: Immediately update the TUI footer to show the new model.
+    // Parse provider/model from the input string (first segment is provider).
+    const firstSlash = model.indexOf("/");
+    if (firstSlash !== -1) {
+      state.sessionInfo.modelProvider = model.slice(0, firstSlash);
+      state.sessionInfo.model = model.slice(firstSlash + 1);
+    } else {
+      state.sessionInfo.model = model;
+    }
+    logDebug(
+      `[tui-model] state updated: modelProvider=${state.sessionInfo.modelProvider} model=${state.sessionInfo.model}`,
+    );
+    updateFooter?.();
+    tui.requestRender();
+
+    // Step 3: Patch the session store to clear stale runtime model fields and
+    // override. By sending model=null we tell the gateway to reset the session
+    // to "use config default" — which `models set` already updated. This avoids
+    // allowlist validation entirely and never fails.
+    // We still retry because the gateway might briefly be unreachable.
+    void (async () => {
+      const delays = [500, 2000, 5000, 10000];
+      for (let attempt = 0; attempt < delays.length; attempt++) {
+        const delay = delays[attempt];
+        logDebug(
+          `[tui-model] background sessions.patch(model=null) attempt ${attempt + 1}/${delays.length} — waiting ${delay}ms`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        try {
+          logDebug(
+            `[tui-model] background sessions.patch(model=null) attempt ${attempt + 1}/${delays.length} — sending patch key="${state.currentSessionKey}"`,
+          );
+          const result = await client.patchSession({
+            key: state.currentSessionKey,
+            model: null,
+          });
+          logDebug(
+            `[tui-model] background sessions.patch(model=null) attempt ${attempt + 1}/${delays.length} — SUCCESS resolved=${result.resolved?.modelProvider}/${result.resolved?.model}`,
+          );
+          // Don't applySessionInfoFromPatch here — we already set the correct
+          // state in step 2. The patch result may resolve to a stale default
+          // if the gateway's config cache hasn't expired yet.
+          return;
+        } catch (err) {
+          logWarn(
+            `[tui-model] background sessions.patch(model=null) attempt ${attempt + 1}/${delays.length} — FAILED: ${String(err)}`,
+          );
+        }
+      }
+      logWarn(
+        `[tui-model] background sessions.patch(model=null): all ${delays.length} retries exhausted`,
+      );
+    })();
+  };
 
   const setAgent = async (id: string) => {
     state.currentAgentId = normalizeAgentId(id);
@@ -140,15 +261,10 @@ export function createCommandHandlers(context: CommandHandlerContext) {
       selector.onSelect = (item) => {
         void (async () => {
           try {
-            const result = await client.patchSession({
-              key: state.currentSessionKey,
-              model: item.value,
-            });
+            await patchSessionModel(item.value);
             chatLog.addSystem(`model set to ${item.value}`);
-            applySessionInfoFromPatch(result);
-            await refreshSessionInfo();
           } catch (err) {
-            chatLog.addSystem(`model set failed: ${String(err)}`);
+            chatLog.addSystem(`model set failed: ${formatModelSetError(err)}`);
           }
           closeOverlay();
           tui.requestRender();
@@ -346,15 +462,10 @@ export function createCommandHandlers(context: CommandHandlerContext) {
           await openModelSelector();
         } else {
           try {
-            const result = await client.patchSession({
-              key: state.currentSessionKey,
-              model: args,
-            });
+            await patchSessionModel(args);
             chatLog.addSystem(`model set to ${args}`);
-            applySessionInfoFromPatch(result);
-            await refreshSessionInfo();
           } catch (err) {
-            chatLog.addSystem(`model set failed: ${String(err)}`);
+            chatLog.addSystem(`model set failed: ${formatModelSetError(err)}`);
           }
         }
         break;
@@ -522,6 +633,28 @@ export function createCommandHandlers(context: CommandHandlerContext) {
         }
         if (!result.ok) {
           chatLog.addSystem(`gateway ${action} failed`);
+        }
+        break;
+      }
+      case "logs": {
+        const limit = args ? Number.parseInt(args, 10) : 50;
+        const count = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 500) : 50;
+        try {
+          chatLog.addSystem(`fetching last ${count} log lines…`);
+          tui.requestRender();
+          const result = await client.fetchLogs({ limit: count });
+          if (result.file) {
+            chatLog.addSystem(`log file: ${result.file}`);
+          }
+          if (result.lines.length === 0) {
+            chatLog.addSystem("(no log lines)");
+          } else {
+            for (const line of result.lines) {
+              chatLog.addSystem(line);
+            }
+          }
+        } catch (err) {
+          chatLog.addSystem(`logs failed: ${String(err)}`);
         }
         break;
       }
