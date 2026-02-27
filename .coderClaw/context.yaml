@@ -1,16 +1,79 @@
 version: 1
 projectName: coderClaw
-description: A coderClaw-enabled project
-rootPath: C:\code\agentic\coderClaw
-languages: []
-frameworks: []
+description: >
+  AI coding agent platform — TypeScript gateway with 7 agent roles,
+  56 skills, multi-agent orchestrator, TUI, WebSocket-based transport,
+  and coderClawLink cloud portal integration. The claw runs locally on
+  developer machines, connects to coderClawLink for management, approval,
+  and fleet coordination.
+rootPath: .
+languages:
+  - TypeScript
+  - JavaScript (ESM)
+  - Swift (macOS/iOS apps)
+  - Kotlin (Android app)
+  - Python (skill helper scripts)
+  - Bash (scripts/committer, docker-setup)
+frameworks:
+  - pi-agent-core (agent runtime)
+  - node-llama-cpp (local embeddings, GGUF models)
+  - Ink + React (TUI rendering)
+  - Vitest (unit/integration/e2e testing)
+  - tsdown (bundling)
+  - OTel SDK (diagnostics-otel extension)
 architecture:
-  style: unknown
-  layers: []
-  patterns: []
-lintingTools: []
+  style: modular-monolith
+  layers:
+    - src/gateway (WebSocket gateway, session management)
+    - src/agents (agent spawning, tool dispatch, model selection)
+    - src/coderclaw (orchestrator, agent roles, project context, tools)
+    - src/tui (terminal UI, Ink components, slash commands)
+    - src/transport (ClawLinkTransportAdapter, upstream WS client)
+    - src/providers (LLM provider adapters — Anthropic, OpenAI, Ollama, etc.)
+    - src/infra (config, logging, git, env)
+    - extensions/ (plugin system — OTel, memory, channels, etc.)
+    - skills/ (56 skill definitions with SKILL.md + optional scripts)
+  patterns:
+    - Agent roles with system prompts, tool allowlists, thinking levels
+    - Multi-agent orchestrator with dependency DAG scheduling
+    - Extension system (load/unload, lifecycle hooks)
+    - Skill system (SKILL.md definition, optional scripts, tool mapping)
+    - Gateway WebSocket protocol (JSON-RPC style messages)
+    - Project context (.coderClaw/ directory with YAML/MD files)
+buildSystem: pnpm + tsdown
+testFramework: vitest
+lintingTools:
+  - oxlint (linting)
+  - oxfmt (formatting)
+  - TypeScript strict mode (noUncheckedIndexedAccess, exactOptionalPropertyTypes)
 dependencies:
-  production: {}
-  development: {}
-customRules: []
-metadata: {}
+  production:
+    "@anthropic-ai/sdk": "latest"
+    "@sinclair/typebox": "typebox"
+    "node-llama-cpp": "embeddings"
+    "yaml": "config parsing"
+    "ink": "TUI rendering"
+    "react": "TUI components"
+    "ws": "WebSocket gateway"
+    "commander": "CLI"
+  development:
+    "vitest": "testing"
+    "tsdown": "bundling"
+    "oxlint": "linting"
+    "typescript": "5.x"
+customRules:
+  - Files must be ≤500 LOC (hard limit 700)
+  - No @ts-nocheck or @ts-expect-error
+  - All exports must have JSDoc
+  - Test coverage ≥70%
+  - Conventional Commits via scripts/committer
+  - Multi-agent safety — no git stash, no branch switching, scope commits to own files
+metadata:
+  nodeVersion: "22+"
+  packageManager: pnpm
+  runtime: Node.js ESM
+  gateway_port: 18789
+  gateway_protocol: WebSocket
+clawLink:
+  url: https://api.coderclaw.ai
+  # instanceId, instanceSlug, tenantId populated after coderclaw init
