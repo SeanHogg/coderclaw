@@ -146,6 +146,9 @@ describe("buildAgentSystemPrompt", () => {
       "Human-in-the-loop rule: if you ask the user a direct question that requires their decision or information, stop tool execution and wait for their reply.",
     );
     expect(prompt).toContain(
+      "If you become idle during an orchestrated workflow, call workflow_status (without workflowId if needed), pick a runnable next task, and continue execution.",
+    );
+    expect(prompt).toContain(
       "Avoid unproductive loops: if the same tool call fails repeatedly or progress stalls, summarize the blocker clearly and ask one direct question instead of retrying indefinitely.",
     );
   });

@@ -35,6 +35,7 @@ export type Workflow = {
   steps: WorkflowStep[];
   tasks: Map<string, Task>;
   status: TaskStatus;
+  createdAt: Date;
 };
 
 /**
@@ -54,6 +55,7 @@ export class AgentOrchestrator {
       steps,
       tasks: new Map(),
       status: "pending",
+      createdAt: new Date(),
     };
 
     // Create tasks from steps
@@ -82,6 +84,11 @@ export class AgentOrchestrator {
     index = 0;
     for (const step of steps) {
       const taskId = stepToTaskId.get(index++)!;
+      const task = workflow.tasks.get(taskId);
+      if (!task) {
+        continue;
+      }
+      const resolvedDependencies: string[] = [];
 
       if (step.dependsOn) {
         for (const depStepId of step.dependsOn) {
@@ -89,6 +96,7 @@ export class AgentOrchestrator {
           if (depIndex !== -1) {
             const depTaskId = stepToTaskId.get(depIndex);
             if (depTaskId) {
+              resolvedDependencies.push(depTaskId);
               const depTask = workflow.tasks.get(depTaskId);
               if (depTask && !depTask.dependents.includes(taskId)) {
                 depTask.dependents.push(taskId);
@@ -97,6 +105,8 @@ export class AgentOrchestrator {
           }
         }
       }
+
+      task.dependencies = resolvedDependencies;
     }
 
     this.workflows.set(id, workflow);
@@ -201,7 +211,7 @@ export class AgentOrchestrator {
         task: taskInput,
         label: task.description,
         agentId: task.agentRole,
-        roleConfig,
+        roleConfig: roleConfig ?? undefined,
       },
       context,
     );
@@ -229,6 +239,36 @@ export class AgentOrchestrator {
    */
   getWorkflowStatus(workflowId: string): Workflow | null {
     return this.workflows.get(workflowId) || null;
+  }
+
+  getLatestWorkflow(params?: { activeOnly?: boolean }): Workflow | null {
+    const activeOnly = params?.activeOnly ?? false;
+    const workflows = Array.from(this.workflows.values());
+    if (workflows.length === 0) {
+      return null;
+    }
+    const filtered = activeOnly
+      ? workflows.filter((wf) => wf.status === "pending" || wf.status === "running")
+      : workflows;
+    if (filtered.length === 0) {
+      return null;
+    }
+    return filtered.toSorted((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
+  }
+
+  getRunnableTasks(workflowId: string): Task[] {
+    const workflow = this.workflows.get(workflowId);
+    if (!workflow) {
+      return [];
+    }
+    const completed = new Set(
+      Array.from(workflow.tasks.values())
+        .filter((task) => task.status === "completed")
+        .map((task) => task.id),
+    );
+    return Array.from(workflow.tasks.values()).filter(
+      (task) => task.status === "pending" && task.dependencies.every((depId) => completed.has(depId)),
+    );
   }
 
   /**
