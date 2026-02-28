@@ -3,7 +3,7 @@
  */
 
 import crypto from "node:crypto";
-import { spawnSubagentDirect, type SpawnSubagentContext } from "../../agents/subagent-spawn.js";
+import { spawnSubagentDirect, type SpawnSubagentContext } from "../agents/subagent-spawn.js";
 import { findAgentRole } from "./agent-roles.js";
 
 export type TaskStatus = "pending" | "running" | "completed" | "failed" | "cancelled";

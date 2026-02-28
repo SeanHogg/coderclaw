@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { formatThinkingLevels, normalizeThinkLevel } from "../auto-reply/thinking.js";
+import type { AgentRole } from "../coderclaw/types.js";
 import { loadConfig } from "../config/config.js";
 import { callGateway } from "../gateway/call.js";
 import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
@@ -26,6 +27,7 @@ export type SpawnSubagentParams = {
   runTimeoutSeconds?: number;
   cleanup?: "delete" | "keep";
   expectsCompletionMessage?: boolean;
+  roleConfig?: AgentRole;
 };
 
 export type SpawnSubagentContext = {
@@ -50,6 +52,10 @@ export type SpawnSubagentResult = {
   note?: string;
   modelApplied?: boolean;
   error?: string;
+  role?: string;
+  model?: string;
+  thinking?: string;
+  tools?: string[];
 };
 
 export function splitModelRef(ref?: string) {
@@ -74,8 +80,8 @@ export async function spawnSubagentDirect(
   const task = params.task;
   const label = params.label?.trim() || "";
   const requestedAgentId = params.agentId;
-  const modelOverride = params.model;
-  const thinkingOverrideRaw = params.thinking;
+  let modelOverride = params.model;
+  let thinkingOverrideRaw = params.thinking;
   const cleanup =
     params.cleanup === "keep" || params.cleanup === "delete" ? params.cleanup : "keep";
   const requesterOrigin = normalizeDeliveryContext({
@@ -145,6 +151,34 @@ export async function spawnSubagentDirect(
       };
     }
   }
+
+  // Apply roleConfig overrides if provided
+  if (params.roleConfig) {
+    // Ensure the config has an agent entry with the role's skills and model
+    if (!cfg.agents) cfg.agents = { list: [] };
+    const agentsList = cfg.agents.list;
+    const existingIdx = agentsList.findIndex(e => normalizeAgentId(e.id) === targetAgentId);
+    const role = params.roleConfig;
+    const newEntry = {
+      id: targetAgentId,
+      skills: role.tools,
+      model: role.model,
+    };
+    if (existingIdx >= 0) {
+      agentsList[existingIdx] = { ...agentsList[existingIdx], ...newEntry };
+    } else {
+      agentsList.push(newEntry);
+    }
+
+    // Override model/thinking if not explicitly provided in params
+    if (!modelOverride && role.model) {
+      modelOverride = role.model;
+    }
+    if (!thinkingOverrideRaw && role.thinking) {
+      thinkingOverrideRaw = role.thinking;
+    }
+  }
+
   const childSessionKey = `agent:${targetAgentId}:subagent:${crypto.randomUUID()}`;
   const childDepth = callerDepth + 1;
   const spawnedByKey = requesterInternalKey;
@@ -236,6 +270,12 @@ export async function spawnSubagentDirect(
     childDepth,
     maxSpawnDepth,
   });
+
+  // Inject role-specific system prompt if provided
+  if (params.roleConfig?.systemPrompt) {
+    childSystemPrompt += "\n\n--- Role Guidance ---\n" + params.roleConfig.systemPrompt;
+  }
+
   const childTaskMessage = [
     `[Subagent Context] You are running as a subagent (depth ${childDepth}/${maxSpawnDepth}). Results auto-announce to your requester; do not busy-poll for status.`,
     `[Subagent Task]: ${task}`,
