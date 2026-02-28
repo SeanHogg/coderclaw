@@ -1010,6 +1010,9 @@ export async function runEmbeddedPiAgent(
           const continuationDecision = shouldAutoContinueRun({
             userPrompt: params.prompt,
             assistantTexts: attempt.assistantTexts,
+            payloadTexts: payloads
+              .map((payload) => (typeof payload.text === "string" ? payload.text : ""))
+              .filter((text) => text.length > 0),
             toolNames: attempt.toolMetas.map((entry) => entry.toolName),
             aborted,
             timedOut,

@@ -1,6 +1,7 @@
 export type ContinuationPolicyInput = {
   userPrompt: string;
   assistantTexts: string[];
+  payloadTexts?: string[];
   toolNames: string[];
   aborted?: boolean;
   timedOut?: boolean;
@@ -34,9 +35,15 @@ const COMPLETION_PATTERN =
 const DEFERRAL_PATTERN =
   /\b(let me|i\s*'ll|i will|next step|going to|check .* first|understand .* first)\b/i;
 
-function normalizeLastAssistantText(assistantTexts: string[]): string {
+function normalizeLastAssistantText(assistantTexts: string[], payloadTexts: string[] = []): string {
   for (let i = assistantTexts.length - 1; i >= 0; i -= 1) {
     const text = assistantTexts[i]?.trim();
+    if (text) {
+      return text;
+    }
+  }
+  for (let i = payloadTexts.length - 1; i >= 0; i -= 1) {
+    const text = payloadTexts[i]?.trim();
     if (text) {
       return text;
     }
@@ -71,8 +78,11 @@ export function shouldAutoContinueRun(input: ContinuationPolicyInput): Continuat
     return { shouldContinue: false };
   }
 
-  const lastAssistantText = normalizeLastAssistantText(input.assistantTexts);
+  const lastAssistantText = normalizeLastAssistantText(input.assistantTexts, input.payloadTexts);
   if (!lastAssistantText) {
+    if (isInvestigationOnly(input.toolNames)) {
+      return { shouldContinue: true, reason: "investigation_only_tools" };
+    }
     return { shouldContinue: false };
   }
 

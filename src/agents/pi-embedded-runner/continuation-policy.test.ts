@@ -55,4 +55,27 @@ describe("shouldAutoContinueRun", () => {
 
     expect(decision.shouldContinue).toBe(false);
   });
+
+  it("uses payload text when assistant texts are empty", () => {
+    const decision = shouldAutoContinueRun({
+      userPrompt: "Wire executeWorkflow into orchestrate tool and run tests",
+      assistantTexts: [],
+      payloadTexts: ["Let me check the exact line numbers and understand what this refers to."],
+      toolNames: ["read", "git_history"],
+    });
+
+    expect(decision.shouldContinue).toBe(true);
+    expect(decision.reason).toBe("deferral_language");
+  });
+
+  it("continues execution task when no assistant text but investigation-only tools ran", () => {
+    const decision = shouldAutoContinueRun({
+      userPrompt: "Implement phase -1.1 and run tests",
+      assistantTexts: [],
+      toolNames: ["read", "grep", "find"],
+    });
+
+    expect(decision.shouldContinue).toBe(true);
+    expect(decision.reason).toBe("investigation_only_tools");
+  });
 });
