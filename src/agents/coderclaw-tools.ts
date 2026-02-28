@@ -1,7 +1,7 @@
 import {
   codeAnalysisTool,
   projectKnowledgeTool,
-  orchestrateTool,
+  createOrchestrateTool,
   workflowStatusTool,
   gitHistoryTool,
 } from "../coderclaw/tools/index.js";
@@ -167,7 +167,17 @@ export function createCoderClawTools(options?: {
     ...(imageTool ? [imageTool] : []),
     codeAnalysisTool,
     projectKnowledgeTool,
-    orchestrateTool,
+    createOrchestrateTool({
+      agentSessionKey: options?.agentSessionKey,
+      agentChannel: options?.agentChannel,
+      agentAccountId: options?.agentAccountId,
+      agentTo: options?.agentTo,
+      agentThreadId: options?.agentThreadId,
+      agentGroupId: options?.agentGroupId,
+      agentGroupChannel: options?.agentGroupChannel,
+      agentGroupSpace: options?.agentGroupSpace,
+      requesterAgentIdOverride: options?.requesterAgentIdOverride,
+    }),
     workflowStatusTool,
     gitHistoryTool,
   ];

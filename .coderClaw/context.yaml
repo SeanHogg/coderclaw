@@ -1,11 +1,10 @@
 version: 1
 projectName: coderClaw
 description: >
-  AI coding agent platform — TypeScript gateway with 7 agent roles,
-  56 skills, multi-agent orchestrator, TUI, WebSocket-based transport,
-  and coderClawLink cloud portal integration. The claw runs locally on
-  developer machines, connects to coderClawLink for management, approval,
-  and fleet coordination.
+  AI coding agent platform — TypeScript gateway with 7 agent roles, 56 skills,
+  multi-agent orchestrator, TUI, WebSocket-based transport, and coderClawLink
+  cloud portal integration. The claw runs locally on developer machines,
+  connects to coderClawLink for management, approval, and fleet coordination.
 rootPath: .
 languages:
   - TypeScript
@@ -48,32 +47,36 @@ lintingTools:
   - TypeScript strict mode (noUncheckedIndexedAccess, exactOptionalPropertyTypes)
 dependencies:
   production:
-    "@anthropic-ai/sdk": "latest"
-    "@sinclair/typebox": "typebox"
-    "node-llama-cpp": "embeddings"
-    "yaml": "config parsing"
-    "ink": "TUI rendering"
-    "react": "TUI components"
-    "ws": "WebSocket gateway"
-    "commander": "CLI"
+    "@anthropic-ai/sdk": latest
+    "@sinclair/typebox": typebox
+    node-llama-cpp: embeddings
+    yaml: config parsing
+    ink: TUI rendering
+    react: TUI components
+    ws: WebSocket gateway
+    commander: CLI
   development:
-    "vitest": "testing"
-    "tsdown": "bundling"
-    "oxlint": "linting"
-    "typescript": "5.x"
+    vitest: testing
+    tsdown: bundling
+    oxlint: linting
+    typescript: 5.x
 customRules:
   - Files must be ≤500 LOC (hard limit 700)
   - No @ts-nocheck or @ts-expect-error
   - All exports must have JSDoc
   - Test coverage ≥70%
   - Conventional Commits via scripts/committer
-  - Multi-agent safety — no git stash, no branch switching, scope commits to own files
+  - Multi-agent safety — no git stash, no branch switching, scope commits to own
+    files
 metadata:
-  nodeVersion: "22+"
+  nodeVersion: 22+
   packageManager: pnpm
   runtime: Node.js ESM
   gateway_port: 18789
   gateway_protocol: WebSocket
 clawLink:
+  instanceId: "2"
+  instanceSlug: coderclaw
+  instanceName: coderClaw
+  tenantId: 1
   url: https://api.coderclaw.ai
-  # instanceId, instanceSlug, tenantId populated after coderclaw init

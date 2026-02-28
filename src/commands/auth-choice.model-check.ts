@@ -1,7 +1,7 @@
 import { resolveAgentModelPrimary } from "../agents/agent-scope.js";
 import { ensureAuthProfileStore, listProfilesForProvider } from "../agents/auth-profiles.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
-import { getCustomProviderApiKey, resolveEnvApiKey } from "../agents/model-auth.js";
+import { resolveModelAuthMode } from "../agents/model-auth.js";
 import { loadModelCatalog } from "../agents/model-catalog.js";
 import { resolveConfiguredModelRef } from "../agents/model-selection.js";
 import type { CoderClawConfig } from "../config/config.js";
@@ -56,10 +56,8 @@ export async function warnIfModelConfigLooksOff(
   }
 
   const store = ensureAuthProfileStore(options?.agentDir);
-  const hasProfile = listProfilesForProvider(store, ref.provider).length > 0;
-  const envKey = resolveEnvApiKey(ref.provider);
-  const customKey = getCustomProviderApiKey(config, ref.provider);
-  if (!hasProfile && !envKey && !customKey) {
+  const authMode = resolveModelAuthMode(ref.provider, configWithModel, store);
+  if (authMode === "unknown") {
     warnings.push(
       `No auth configured for provider "${ref.provider}". The agent may fail until credentials are added.`,
     );
