@@ -921,48 +921,57 @@ export const chatHandlers: GatewayRequestHandlers = {
         },
       })
         .then(() => {
-          if (!agentRunStarted) {
-            const combinedReply = finalReplyParts
-              .map((part) => part.trim())
-              .filter(Boolean)
-              .join("\n\n")
-              .trim();
-            let message: Record<string, unknown> | undefined;
-            if (combinedReply) {
-              const { storePath: latestStorePath, entry: latestEntry } =
-                loadSessionEntry(sessionKey);
-              const sessionId = latestEntry?.sessionId ?? entry?.sessionId ?? clientRunId;
-              const appended = appendAssistantTranscriptMessage({
-                message: combinedReply,
-                sessionId,
-                storePath: latestStorePath,
-                sessionFile: latestEntry?.sessionFile,
-                agentId,
-                createIfMissing: true,
-              });
-              if (appended.ok) {
-                message = appended.message;
-              } else {
-                context.logGateway.warn(
-                  `webchat transcript append failed: ${appended.error ?? "unknown error"}`,
-                );
-                const now = Date.now();
-                message = {
-                  role: "assistant",
-                  content: [{ type: "text", text: combinedReply }],
-                  timestamp: now,
-                  // Keep this compatible with Pi stopReason enums even though this message isn't
-                  // persisted to the transcript due to the append failure.
-                  stopReason: "stop",
-                  usage: { input: 0, output: 0, totalTokens: 0 },
-                };
-              }
+          const combinedReply = finalReplyParts
+            .map((part) => part.trim())
+            .filter(Boolean)
+            .join("\n\n")
+            .trim();
+
+          let fallbackFinalMessage: Record<string, unknown> | undefined;
+          if (combinedReply) {
+            const { storePath: latestStorePath, entry: latestEntry } = loadSessionEntry(sessionKey);
+            const sessionId = latestEntry?.sessionId ?? entry?.sessionId ?? clientRunId;
+            const appended = appendAssistantTranscriptMessage({
+              message: combinedReply,
+              sessionId,
+              storePath: latestStorePath,
+              sessionFile: latestEntry?.sessionFile,
+              agentId,
+              createIfMissing: true,
+            });
+            if (appended.ok) {
+              fallbackFinalMessage = appended.message;
+            } else {
+              context.logGateway.warn(
+                `webchat transcript append failed: ${appended.error ?? "unknown error"}`,
+              );
+              const now = Date.now();
+              fallbackFinalMessage = {
+                role: "assistant",
+                content: [{ type: "text", text: combinedReply }],
+                timestamp: now,
+                stopReason: "stop",
+                usage: { input: 0, output: 0, totalTokens: 0 },
+              };
             }
+          }
+
+          if (!agentRunStarted) {
             broadcastChatFinal({
               context,
               runId: clientRunId,
               sessionKey: rawSessionKey,
-              message,
+              message: fallbackFinalMessage,
+            });
+          } else if (fallbackFinalMessage) {
+            // Some failures occur after onAgentRunStart but before lifecycle
+            // terminal events are emitted. In that case, emit a terminal chat
+            // final here so UIs don't remain stuck waiting forever.
+            broadcastChatFinal({
+              context,
+              runId: clientRunId,
+              sessionKey: rawSessionKey,
+              message: fallbackFinalMessage,
             });
           }
           context.dedupe.set(`chat:${clientRunId}`, {

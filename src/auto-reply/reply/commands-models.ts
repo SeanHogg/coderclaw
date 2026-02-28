@@ -110,6 +110,8 @@ export async function buildModelsProviderData(cfg: CoderClawConfig): Promise<Mod
   // curated catalog doesn't know about them (custom providers, dev builds, etc.).
   add(resolvedDefault.provider, resolvedDefault.model);
   addModelConfigEntries();
+  // Always expose the first-party managed default so users can discover/switch to it.
+  add("coderclawllm", "auto");
 
   const providers = [...byProvider.keys()].toSorted();
 

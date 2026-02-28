@@ -86,6 +86,7 @@ const isSystemdUserServiceAvailable = vi.hoisted(() => vi.fn(async () => true));
 const ensureControlUiAssetsBuilt = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 const runTui = vi.hoisted(() => vi.fn(async (_options: unknown) => {}));
 const setupOnboardingShellCompletion = vi.hoisted(() => vi.fn(async () => {}));
+const promptCoderClawLinkOnboarding = vi.hoisted(() => vi.fn(async () => "connected"));
 
 vi.mock("../commands/onboard-channels.js", () => ({
   setupChannels,
@@ -192,6 +193,10 @@ vi.mock("./onboarding.finalize.js", () => ({
 
 vi.mock("./onboarding.completion.js", () => ({
   setupOnboardingShellCompletion,
+}));
+
+vi.mock("../commands/coderclaw-link-onboarding.js", () => ({
+  promptCoderClawLinkOnboarding,
 }));
 
 function createWizardPrompter(overrides?: Partial<WizardPrompter>): WizardPrompter {
@@ -479,5 +484,73 @@ describe("runOnboardingWizard", () => {
     expect(promptAuthChoiceGrouped).not.toHaveBeenCalled();
     expect(configureGatewayForOnboarding).not.toHaveBeenCalled();
     expect(setupChannels).not.toHaveBeenCalled();
+  });
+
+  it("runs CoderClawLink registration wizard when coderclawllm is selected without key", async () => {
+    promptCoderClawLinkOnboarding.mockClear();
+    const prevStateDir = process.env.CODERCLAW_STATE_DIR;
+    const prevLinkKey = process.env.CODERCLAW_LINK_API_KEY;
+    const stateDir = await makeCaseDir("state-");
+    const workspaceDir = await makeCaseDir("workspace-link-");
+
+    process.env.CODERCLAW_STATE_DIR = stateDir;
+    delete process.env.CODERCLAW_LINK_API_KEY;
+
+    applyAuthChoice.mockImplementationOnce(async (args) => ({
+      config: {
+        ...args.config,
+        agents: {
+          ...args.config.agents,
+          defaults: {
+            ...args.config.agents?.defaults,
+            model: {
+              ...(args.config.agents?.defaults?.model ?? {}),
+              primary: "coderclawllm/auto",
+            },
+          },
+        },
+      },
+    }));
+
+    try {
+      const prompter = createWizardPrompter();
+      const runtime = createRuntime();
+
+      await runOnboardingWizard(
+        {
+          acceptRisk: true,
+          flow: "quickstart",
+          mode: "local",
+          workspace: workspaceDir,
+          authChoice: "coderclawllm",
+          installDaemon: false,
+          skipProviders: true,
+          skipSkills: true,
+          skipHealth: true,
+          skipUi: true,
+        },
+        runtime,
+        prompter,
+      );
+
+      expect(promptCoderClawLinkOnboarding).toHaveBeenCalledTimes(1);
+      expect(promptCoderClawLinkOnboarding).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectRoot: workspaceDir,
+          forcePrompt: true,
+        }),
+      );
+    } finally {
+      if (prevStateDir === undefined) {
+        delete process.env.CODERCLAW_STATE_DIR;
+      } else {
+        process.env.CODERCLAW_STATE_DIR = prevStateDir;
+      }
+      if (prevLinkKey === undefined) {
+        delete process.env.CODERCLAW_LINK_API_KEY;
+      } else {
+        process.env.CODERCLAW_LINK_API_KEY = prevLinkKey;
+      }
+    }
   });
 });

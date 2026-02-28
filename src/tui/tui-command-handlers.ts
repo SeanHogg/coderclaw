@@ -18,6 +18,7 @@ import {
   createSearchableSelectList,
   createSettingsList,
 } from "./components/selectors.js";
+import { readSharedEnvVar } from "../infra/env-file.js";
 import type { GatewayChatClient } from "./gateway-chat.js";
 import { formatStatusSummary } from "./tui-status-summary.js";
 import type {
@@ -169,7 +170,24 @@ export function createCommandHandlers(context: CommandHandlerContext) {
     return message;
   };
 
-  const patchSessionModel = async (model: string): Promise<void> => {
+  const patchSessionModel = async (model: string): Promise<"updated" | "onboarding"> => {
+    const normalized = model.trim().toLowerCase();
+    const isCoderClawLlm = normalized === "coderclawllm" || normalized.startsWith("coderclawllm/");
+    if (isCoderClawLlm) {
+      const registrationKey =
+        process.env.CODERCLAW_LINK_API_KEY?.trim() ||
+        readSharedEnvVar("CODERCLAW_LINK_API_KEY")?.trim();
+      if (!registrationKey) {
+        chatLog.addSystem("coderclawllm requires CoderClawLink registration. Launching setup wizard...");
+        if (onSetup) {
+          tui.requestRender();
+          await onSetup();
+          return "onboarding";
+        }
+        throw new Error("coderclawllm requires CoderClawLink registration. Run: coderclaw onboard");
+      }
+    }
+
     // Step 1: Always run `coderclaw models set` first. This is the canonical way
     // to change models — it updates the default in config AND adds the model to
     // the allowlist. Without this, `sessions.patch` will reject models that
@@ -237,6 +255,7 @@ export function createCommandHandlers(context: CommandHandlerContext) {
         `[tui-model] background sessions.patch(model=null): all ${delays.length} retries exhausted`,
       );
     })();
+    return "updated";
   };
 
   const setAgent = async (id: string) => {
@@ -247,6 +266,16 @@ export function createCommandHandlers(context: CommandHandlerContext) {
   const openModelSelector = async () => {
     try {
       const models = await client.listModels();
+      const hasCoderclawllm = models.some(
+        (model) => model.provider === "coderclawllm" && model.id === "auto",
+      );
+      if (!hasCoderclawllm) {
+        models.unshift({
+          provider: "coderclawllm",
+          id: "auto",
+          name: "CoderClawLLM Auto (free pool)",
+        });
+      }
       if (models.length === 0) {
         chatLog.addSystem("no models available");
         tui.requestRender();
@@ -261,8 +290,10 @@ export function createCommandHandlers(context: CommandHandlerContext) {
       selector.onSelect = (item) => {
         void (async () => {
           try {
-            await patchSessionModel(item.value);
-            chatLog.addSystem(`model set to ${item.value}`);
+            const outcome = await patchSessionModel(item.value);
+            if (outcome === "updated") {
+              chatLog.addSystem(`model set to ${item.value}`);
+            }
           } catch (err) {
             chatLog.addSystem(`model set failed: ${formatModelSetError(err)}`);
           }
@@ -462,8 +493,10 @@ export function createCommandHandlers(context: CommandHandlerContext) {
           await openModelSelector();
         } else {
           try {
-            await patchSessionModel(args);
-            chatLog.addSystem(`model set to ${args}`);
+            const outcome = await patchSessionModel(args);
+            if (outcome === "updated") {
+              chatLog.addSystem(`model set to ${args}`);
+            }
           } catch (err) {
             chatLog.addSystem(`model set failed: ${formatModelSetError(err)}`);
           }

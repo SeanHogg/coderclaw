@@ -277,6 +277,59 @@ describe("getApiKeyForModel", () => {
     });
   });
 
+  it("resolves coderclawllm API key from shared env registration", async () => {
+    const envSnapshot = captureEnv(["CODERCLAW_STATE_DIR", "CODERCLAW_LINK_API_KEY"]);
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "coderclaw-link-auth-"));
+
+    try {
+      process.env.CODERCLAW_STATE_DIR = tempDir;
+      delete process.env.CODERCLAW_LINK_API_KEY;
+
+      await fs.writeFile(
+        path.join(tempDir, ".env"),
+        "CODERCLAW_LINK_API_KEY=shared-link-key\n",
+        "utf8",
+      );
+
+      const resolved = await resolveApiKeyForProvider({
+        provider: "coderclawllm",
+        store: { version: 1, profiles: {} },
+      });
+
+      expect(resolved.apiKey).toBe("shared-link-key");
+      expect(resolved.source).toContain("shared env: CODERCLAW_LINK_API_KEY");
+    } finally {
+      envSnapshot.restore();
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("provides onboarding guidance when coderclawllm is not registered", async () => {
+    const envSnapshot = captureEnv(["CODERCLAW_STATE_DIR", "CODERCLAW_LINK_API_KEY"]);
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "coderclaw-link-missing-"));
+
+    try {
+      process.env.CODERCLAW_STATE_DIR = tempDir;
+      delete process.env.CODERCLAW_LINK_API_KEY;
+
+      let error: unknown = null;
+      try {
+        await resolveApiKeyForProvider({
+          provider: "coderclawllm",
+          store: { version: 1, profiles: {} },
+        });
+      } catch (err) {
+        error = err;
+      }
+
+      expect(String(error)).toContain("No CoderClawLink registration found for provider \"coderclawllm\".");
+      expect(String(error)).toContain("coderclaw onboard");
+    } finally {
+      envSnapshot.restore();
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("prefers Bedrock bearer token over access keys and profile", async () => {
     const previous = captureBedrockEnv();
 

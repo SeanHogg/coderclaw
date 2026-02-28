@@ -23,6 +23,12 @@ const AUTH_CHOICE_GROUP_DEFS: {
   choices: AuthChoice[];
 }[] = [
   {
+    value: "coderclawllm",
+    label: "CoderClawLLM",
+    hint: "Recommended default (managed free model pool)",
+    choices: ["coderclawllm"],
+  },
+  {
     value: "coderclaw",
     label: "CoderClaw",
     hint: "Managed endpoint or self-hosted gateway",
@@ -169,6 +175,11 @@ const AUTH_CHOICE_GROUP_DEFS: {
 ];
 
 const BASE_AUTH_CHOICE_OPTIONS: ReadonlyArray<AuthChoiceOption> = [
+  {
+    value: "coderclawllm",
+    label: "CoderClawLLM (recommended)",
+    hint: "Uses api.coderclaw.ai/llm with automatic free-model failover (no local key)",
+  },
   {
     value: "token",
     label: "Anthropic token (paste setup-token)",

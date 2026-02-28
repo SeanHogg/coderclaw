@@ -1,3 +1,4 @@
+import path from "node:path";
 import { ensureAuthProfileStore } from "../agents/auth-profiles.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import type {
@@ -15,6 +16,7 @@ import {
 } from "../config/config.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { defaultRuntime } from "../runtime.js";
+import { readSharedEnvVar } from "../infra/env-file.js";
 import { resolveUserPath } from "../utils.js";
 import type {
   GatewayWizardSettings,
@@ -442,6 +444,36 @@ export async function runOnboardingWizard(
       }
       if (modelSelection.model) {
         nextConfig = applyPrimaryModel(nextConfig, modelSelection.model);
+      }
+    }
+
+    const primaryModel =
+      typeof nextConfig.agents?.defaults?.model?.primary === "string"
+        ? nextConfig.agents.defaults.model.primary.trim().toLowerCase()
+        : "";
+    const usesCoderClawLlm =
+      primaryModel === "coderclawllm" || primaryModel.startsWith("coderclawllm/");
+    if (usesCoderClawLlm) {
+      const sharedKey =
+        process.env.CODERCLAW_LINK_API_KEY?.trim() ??
+        readSharedEnvVar("CODERCLAW_LINK_API_KEY")?.trim();
+      if (!sharedKey) {
+        await prompter.note(
+          [
+            "CoderClawLLM requires CoderClawLink registration.",
+            "Complete login/registration now so /model coderclawllm/auto works immediately.",
+          ].join("\n"),
+          "CoderClawLLM",
+        );
+        const { promptCoderClawLinkOnboarding } = await import(
+          "../commands/coderclaw-link-onboarding.js"
+        );
+        const defaultInstanceName = path.basename(workspaceDir) || "coderclaw";
+        await promptCoderClawLinkOnboarding({
+          projectRoot: workspaceDir,
+          defaultInstanceName,
+          forcePrompt: true,
+        });
       }
     }
 

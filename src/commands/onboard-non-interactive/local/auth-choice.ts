@@ -48,6 +48,7 @@ import {
   setXiaomiApiKey,
   setZaiApiKey,
 } from "../../onboard-auth.js";
+import { applyAgentDefaultModelPrimary } from "../../onboard-auth.config-shared.js";
 import {
   applyCustomApiConfig,
   CustomApiError,
@@ -73,7 +74,7 @@ export async function applyNonInteractiveAuthChoice(params: {
     runtime.error(
       [
         `Auth choice "${authChoice}" is deprecated.`,
-        'Use "--auth-choice token" (Anthropic setup-token) or "--auth-choice openai-codex".',
+        'Use "--auth-choice coderclawllm" (recommended default), "--auth-choice token" (Anthropic setup-token), or "--auth-choice openai-codex".',
       ].join("\n"),
     );
     runtime.exit(1);
@@ -100,6 +101,11 @@ export async function applyNonInteractiveAuthChoice(params: {
     );
     runtime.exit(1);
     return null;
+  }
+
+  if (authChoice === "coderclawllm") {
+    runtime.log("Using default CoderClawLLM provider (coderclawllm/auto).");
+    return applyAgentDefaultModelPrimary(nextConfig, "coderclawllm/auto");
   }
 
   if (authChoice === "apiKey") {

@@ -173,6 +173,46 @@ describe("gateway server chat", () => {
     });
   });
 
+  test("chat.send emits final event when run started but fails before lifecycle terminal event", async () => {
+    await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
+      const spy = getReplyFromConfig;
+      await connectOk(ws);
+
+      await createSessionDir();
+      await writeMainSessionStore();
+
+      spy.mockReset();
+      spy.mockImplementationOnce(async (_ctx: unknown, opts?: GetReplyOptions) => {
+        opts?.onAgentRunStart?.(opts.runId ?? "idem-pre-reply-fail");
+        return {
+          text: "⚠️ Agent failed before reply: No CoderClawLink registration found.",
+        };
+      });
+
+      const finalEventP = onceMessage(
+        ws,
+        (o) =>
+          o.type === "event" &&
+          o.event === "chat" &&
+          o.payload?.state === "final" &&
+          o.payload?.runId === "idem-pre-reply-fail",
+        8_000,
+      );
+
+      const sendRes = await rpcReq(ws, "chat.send", {
+        sessionKey: "main",
+        message: "hello",
+        idempotencyKey: "idem-pre-reply-fail",
+      });
+      expect(sendRes.ok).toBe(true);
+
+      const finalEvent = await finalEventP;
+      const textBlock = finalEvent.payload?.message?.content?.[0]?.text;
+      expect(typeof textBlock).toBe("string");
+      expect(String(textBlock)).toContain("Agent failed before reply");
+    });
+  });
+
   test("chat.history hard-caps single oversized nested payloads", async () => {
     await withGatewayChatHarness(async ({ ws, createSessionDir }) => {
       const historyMaxBytes = 64 * 1024;

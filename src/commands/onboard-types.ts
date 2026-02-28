@@ -10,6 +10,7 @@ export type AuthChoice =
   | "token"
   | "chutes"
   | "vllm"
+  | "coderclawllm"
   | "openai-codex"
   | "openai-api-key"
   | "openrouter-api-key"
@@ -50,6 +51,7 @@ export type AuthChoice =
   | "skip";
 export type AuthChoiceGroupId =
   | "coderclaw"
+  | "coderclawllm"
   | "openai"
   | "anthropic"
   | "chutes"

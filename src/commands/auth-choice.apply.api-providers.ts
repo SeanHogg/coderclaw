@@ -10,6 +10,7 @@ import { applyAuthChoiceHuggingface } from "./auth-choice.apply.huggingface.js";
 import type { ApplyAuthChoiceParams, ApplyAuthChoiceResult } from "./auth-choice.apply.js";
 import { applyAuthChoiceOpenRouter } from "./auth-choice.apply.openrouter.js";
 import { applyDefaultModelChoice } from "./auth-choice.default-model.js";
+import { applyAgentDefaultModelPrimary } from "./onboard-auth.config-shared.js";
 import {
   applyGoogleGeminiModelDefault,
   GOOGLE_GEMINI_DEFAULT_MODEL,
@@ -151,6 +152,27 @@ export async function applyAuthChoiceApiProviders(
 
   if (authChoice === "openrouter-api-key") {
     return applyAuthChoiceOpenRouter(params);
+  }
+
+  if (authChoice === "coderclawllm") {
+    await params.prompter.note(
+      "Using CoderClawLLM default proxy (no local API key required).",
+      "CoderClawLLM",
+    );
+    const defaultModel = "coderclawllm/auto";
+    const applied = await applyDefaultModelChoice({
+      config: nextConfig,
+      setDefaultModel: params.setDefaultModel,
+      defaultModel,
+      applyDefaultConfig: (config) => applyAgentDefaultModelPrimary(config, defaultModel),
+      applyProviderConfig: (config) => config,
+      noteDefault: defaultModel,
+      noteAgentModel,
+      prompter: params.prompter,
+    });
+    nextConfig = applied.config;
+    agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
+    return { config: nextConfig, agentModelOverride };
   }
 
   if (authChoice === "litellm-api-key") {

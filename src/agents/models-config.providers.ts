@@ -616,6 +616,58 @@ export function buildQianfanProvider(): ProviderConfig {
   };
 }
 
+// ---------------------------------------------------------------------------
+// coderClawLLM — first-party free-model proxy (api.coderclaw.ai/llm)
+// ---------------------------------------------------------------------------
+
+const CODERCLAWLLM_BASE_URL = "https://api.coderclaw.ai/llm/v1";
+const CODERCLAWLLM_FREE_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+export function buildCoderclawllmProvider(): ProviderConfig {
+  return {
+    baseUrl: CODERCLAWLLM_BASE_URL,
+    api: "openai-completions",
+    models: [
+      {
+        id: "auto",
+        name: "CoderClawLLM Auto (free pool)",
+        reasoning: false,
+        input: ["text"],
+        cost: CODERCLAWLLM_FREE_COST,
+        contextWindow: 262144,
+        maxTokens: 8192,
+      },
+      {
+        id: "qwen/qwen3-coder:free",
+        name: "Qwen3 Coder (262k ctx)",
+        reasoning: false,
+        input: ["text"],
+        cost: CODERCLAWLLM_FREE_COST,
+        contextWindow: 262144,
+        maxTokens: 8192,
+      },
+      {
+        id: "google/gemma-3-27b-it:free",
+        name: "Gemma 3 27B (131k ctx)",
+        reasoning: false,
+        input: ["text"],
+        cost: CODERCLAWLLM_FREE_COST,
+        contextWindow: 131072,
+        maxTokens: 8192,
+      },
+      {
+        id: "meta-llama/llama-3.3-70b-instruct:free",
+        name: "Llama 3.3 70B (128k ctx)",
+        reasoning: false,
+        input: ["text"],
+        cost: CODERCLAWLLM_FREE_COST,
+        contextWindow: 131072,
+        maxTokens: 8192,
+      },
+    ],
+  };
+}
+
 export function buildNvidiaProvider(): ProviderConfig {
   return {
     baseUrl: NVIDIA_BASE_URL,
@@ -802,6 +854,13 @@ export async function resolveImplicitProviders(params: {
   if (nvidiaKey) {
     providers.nvidia = { ...buildNvidiaProvider(), apiKey: nvidiaKey };
   }
+
+  // coderClawLLM — first-party free-model proxy.
+  // This provider is always available; the server-side OpenRouter key lives in CoderClawLink.
+  providers.coderclawllm = {
+    ...buildCoderclawllmProvider(),
+    apiKey: "coderclawllm-proxy",
+  };
 
   return providers;
 }

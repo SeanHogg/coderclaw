@@ -287,9 +287,23 @@ export function createEventHandlers(context: EventHandlerContext) {
         setActivityStatus("running");
       }
       if (phase === "end") {
+        sessionRuns.delete(evt.runId);
+        clearActiveRunIfMatch(evt.runId);
+        maybeRefreshHistoryForRun(evt.runId);
         setActivityStatus("idle");
       }
       if (phase === "error") {
+        const errorMessage =
+          asString(evt.data?.error, "") ||
+          asString(evt.data?.errorMessage, "") ||
+          asString(evt.data?.message, "") ||
+          asString(evt.data?.detail, "") ||
+          "unknown";
+        chatLog.addSystem(`run error: ${errorMessage}`);
+        noteFinalizedRun(evt.runId);
+        clearActiveRunIfMatch(evt.runId);
+        maybeRefreshHistoryForRun(evt.runId);
+        void refreshSessionInfo?.();
         setActivityStatus("error");
       }
       tui.requestRender();

@@ -50,7 +50,7 @@ export async function runNonInteractiveOnboardingLocal(params: {
     runtime.exit(1);
     return;
   }
-  const authChoice = opts.authChoice ?? inferredAuthChoice.choice ?? "skip";
+  const authChoice = opts.authChoice ?? inferredAuthChoice.choice ?? "coderclawllm";
   const nextConfigAfterAuth = await applyNonInteractiveAuthChoice({
     nextConfig,
     authChoice,

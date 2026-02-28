@@ -63,7 +63,7 @@ export function registerOnboardCommand(program: Command) {
     )
     .option("--flow <flow>", "Wizard flow: quickstart|advanced|manual")
     .option("--mode <mode>", "Wizard mode: local|remote")
-    .option("--auth-choice <choice>", `Auth: ${AUTH_CHOICE_HELP}`)
+    .option("--auth-choice <choice>", `Auth (default: coderclawllm): ${AUTH_CHOICE_HELP}`)
     .option(
       "--token-provider <id>",
       "Token provider id (non-interactive; used with --auth-choice token)",

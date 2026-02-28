@@ -36,7 +36,20 @@ export const modelsHandlers: GatewayRequestHandlers = {
         defaultProvider: resolvedDefault.provider,
         defaultModel: resolvedDefault.model,
       });
-      const visibleModels = allowed.allowAny ? models : allowed.allowedCatalog;
+      const visibleModels = allowed.allowAny ? [...models] : [...allowed.allowedCatalog];
+      const hasCoderclawllm = visibleModels.some(
+        (entry) => entry.provider === "coderclawllm" && entry.id === "auto",
+      );
+      if (!hasCoderclawllm) {
+        visibleModels.push({
+          provider: "coderclawllm",
+          id: "auto",
+          name: "CoderClawLLM Auto (free pool)",
+          contextWindow: 262_144,
+          reasoning: false,
+          input: ["text"],
+        });
+      }
       respond(true, { models: visibleModels }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));

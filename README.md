@@ -199,7 +199,7 @@ This persistent context enables deep codebase understanding and intelligent agen
 - **[Anthropic](https://www.anthropic.com/)** (Claude Pro/Max)
 - **[OpenAI](https://openai.com/)** (ChatGPT/Codex)
 
-Model note: while any model is supported, I strongly recommend **Anthropic Pro/Max (100/200) + Opus 4.6** for long‑context strength and better prompt‑injection resistance. See [Onboarding](https://docs.coderclaw.ai/start/onboarding).
+Model note: while any model is supported, the default is **CoderClawLLM (`coderclawllm/auto`)** for a managed free-model pool with automatic failover. See [Onboarding](https://docs.coderclaw.ai/start/onboarding).
 
 ## Models (selection + auth)
 
@@ -545,7 +545,7 @@ Minimal `~/.coderclaw/coderclaw.json` (model + defaults):
 ```json5
 {
   agent: {
-    model: "anthropic/claude-opus-4-6",
+    model: "coderclawllm/auto",
   },
 }
 ```

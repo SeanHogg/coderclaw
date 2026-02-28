@@ -408,7 +408,15 @@ async function detectProjectInfo(projectRoot: string): Promise<DetectedProjectIn
 // LLM provider helpers
 // ---------------------------------------------------------------------------
 
-type ProviderChoice = "anthropic" | "openai" | "openrouter" | "gemini" | "ollama" | "vllm" | "skip";
+type ProviderChoice =
+  | "coderclawllm"
+  | "anthropic"
+  | "openai"
+  | "openrouter"
+  | "gemini"
+  | "ollama"
+  | "vllm"
+  | "skip";
 
 interface ProviderMeta {
   id: ProviderChoice;
@@ -418,6 +426,11 @@ interface ProviderMeta {
 }
 
 const PROVIDERS: ProviderMeta[] = [
+  {
+    id: "coderclawllm",
+    label: "CoderClawLLM (recommended)",
+    defaultModel: "coderclawllm/auto",
+  },
   {
     id: "anthropic",
     label: "Anthropic (Claude)",
@@ -484,7 +497,9 @@ async function promptLlmProvider(projectRoot: string): Promise<string | null> {
     ...PROVIDERS.map((p) => ({
       value: p.id,
       label: isProviderConfigured(p) ? `${p.label}  ✓ configured` : p.label,
-      hint: isProviderConfigured(p)
+      hint: p.id === "coderclawllm"
+        ? "managed proxy (no local API key needed)"
+        : isProviderConfigured(p)
         ? `${p.envVar} is set`
         : p.envVar
           ? `needs ${p.envVar}`
@@ -506,11 +521,17 @@ async function promptLlmProvider(projectRoot: string): Promise<string | null> {
 
   // ── Cloud providers: API key ──────────────────────────────────────────────
   if (
+    chosen === "coderclawllm" ||
     chosen === "anthropic" ||
     chosen === "openai" ||
     chosen === "openrouter" ||
     chosen === "gemini"
   ) {
+    if (chosen === "coderclawllm") {
+      await applyLlmProviderModel(projectRoot, chosen, meta.defaultModel);
+      return `${meta.label} configured, model → ${meta.defaultModel}`;
+    }
+
     if (isProviderConfigured(meta)) {
       note(`${meta.envVar} is already set — keeping existing credential.`, meta.label);
       await applyLlmProviderModel(projectRoot, chosen, meta.defaultModel);

@@ -173,6 +173,42 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     expect(tui.requestRender).toHaveBeenCalledTimes(1);
   });
 
+  it("clears active run on lifecycle end to avoid stuck busy state", () => {
+    const { state, setActivityStatus, loadHistory, handleAgentEvent } = createHandlersHarness({
+      state: { activeChatRunId: "run-end" },
+    });
+
+    handleAgentEvent({
+      runId: "run-end",
+      stream: "lifecycle",
+      data: { phase: "end" },
+    });
+
+    expect(setActivityStatus).toHaveBeenCalledWith("idle");
+    expect(state.activeChatRunId).toBeNull();
+    expect(loadHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces lifecycle error details and clears active run", () => {
+    const { state, chatLog, setActivityStatus, loadHistory, handleAgentEvent } =
+      createHandlersHarness({
+        state: { activeChatRunId: "run-err" },
+      });
+
+    handleAgentEvent({
+      runId: "run-err",
+      stream: "lifecycle",
+      data: { phase: "error", error: "No API key found for provider coderclawllm" },
+    });
+
+    expect(chatLog.addSystem).toHaveBeenCalledWith(
+      "run error: No API key found for provider coderclawllm",
+    );
+    expect(setActivityStatus).toHaveBeenCalledWith("error");
+    expect(state.activeChatRunId).toBeNull();
+    expect(loadHistory).toHaveBeenCalledTimes(1);
+  });
+
   it("captures runId from chat events when activeChatRunId is unset", () => {
     const { state, chatLog, handleChatEvent, handleAgentEvent } = createHandlersHarness({
       state: { activeChatRunId: null },

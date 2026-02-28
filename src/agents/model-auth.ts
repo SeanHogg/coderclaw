@@ -3,6 +3,7 @@ import { type Api, getEnvApiKey, type Model } from "@mariozechner/pi-ai";
 import { formatCliCommand } from "../cli/command-format.js";
 import type { CoderClawConfig } from "../config/config.js";
 import type { ModelProviderAuthMode, ModelProviderConfig } from "../config/types.js";
+import { readSharedEnvVar } from "../infra/env-file.js";
 import { getShellEnvAppliedKeys } from "../infra/shell-env.js";
 import {
   normalizeOptionalSecretInput,
@@ -208,6 +209,20 @@ export async function resolveApiKeyForProvider(params: {
   }
 
   const normalized = normalizeProviderId(provider);
+  if (normalized === "coderclawllm") {
+    const sharedKey = normalizeOptionalSecretInput(readSharedEnvVar("CODERCLAW_LINK_API_KEY"));
+    if (sharedKey) {
+      return {
+        apiKey: sharedKey,
+        source: "shared env: CODERCLAW_LINK_API_KEY",
+        mode: "api-key",
+      };
+    }
+    throw new Error(
+      `No CoderClawLink registration found for provider "coderclawllm". Run ${formatCliCommand("coderclaw onboard")} (or /setup in TUI) to register your claw, then retry.`,
+    );
+  }
+
   if (authOverride === undefined && normalized === "amazon-bedrock") {
     return resolveAwsSdkAuthInfo();
   }
@@ -311,6 +326,7 @@ export function resolveEnvApiKey(provider: string): EnvApiKeyResult | null {
     venice: "VENICE_API_KEY",
     mistral: "MISTRAL_API_KEY",
     opencode: "OPENCODE_API_KEY",
+    coderclawllm: "CODERCLAW_LINK_API_KEY",
     together: "TOGETHER_API_KEY",
     qianfan: "QIANFAN_API_KEY",
     ollama: "OLLAMA_API_KEY",
@@ -373,6 +389,13 @@ export function resolveModelAuthMode(
   }
 
   if (getCustomProviderApiKey(cfg, resolved)) {
+    return "api-key";
+  }
+
+  if (
+    normalizeProviderId(resolved) === "coderclawllm" &&
+    normalizeOptionalSecretInput(readSharedEnvVar("CODERCLAW_LINK_API_KEY"))
+  ) {
     return "api-key";
   }
 
