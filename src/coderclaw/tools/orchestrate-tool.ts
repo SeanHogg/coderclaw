@@ -114,24 +114,25 @@ export function createOrchestrateTool(options?: {
         // Create workflow
         const wf = globalOrchestrator.createWorkflow(steps);
 
-        // Execute workflow asynchronously (fire-and-forget)
-        // We don't await this - the workflow runs in the background
-        globalOrchestrator.executeWorkflow(wf.id, context).catch((error) => {
-          console.error(`Workflow ${wf.id} failed:`, error);
-        });
-
-        return jsonResult({
-          workflowId: wf.id,
-          status: "executing",
-          taskCount: wf.tasks.size,
-          steps: steps.map((s, i) => ({
-            step: i + 1,
-            role: s.role,
-            task: s.task,
-            dependencies: s.dependsOn || [],
-          })),
-          note: "Workflow started executing. Use workflow_status to check progress.",
-        }) as AgentToolResult<string>;
+        // Execute workflow and await completion so we can return proper status
+        try {
+          const results = await globalOrchestrator.executeWorkflow(wf.id, context);
+          
+          return jsonResult({
+            workflowId: wf.id,
+            status: "completed",
+            taskCount: wf.tasks.size,
+            results: Array.from(results.entries()).map(([taskId, result]) => ({
+              taskId,
+              result,
+            })),
+            note: "Workflow completed successfully.",
+          }) as AgentToolResult<string>;
+        } catch (executionError) {
+          return jsonResult({
+            error: `Workflow execution failed: ${executionError instanceof Error ? executionError.message : String(executionError)}`,
+          }) as AgentToolResult<string>;
+        }
       } catch (error) {
         return jsonResult({
           error: `Failed to create workflow: ${error instanceof Error ? error.message : String(error)}`,

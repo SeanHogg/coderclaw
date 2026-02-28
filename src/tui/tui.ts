@@ -444,7 +444,7 @@ export async function runTui(opts: TuiOptions) {
   let statusText: Text | null = null;
   let statusLoader: Loader | null = null;
   const statusTraceLines: string[] = [];
-  const MAX_STATUS_TRACE_LINES = 4;
+  const MAX_STATUS_TRACE_LINES = 8;
 
   const formatTraceTimestamp = () => {
     const now = new Date();
@@ -630,17 +630,7 @@ export async function runTui(opts: TuiOptions) {
   };
 
   const setActivityStatus = (text: string) => {
-    const previous = activityStatus;
     activityStatus = text;
-    if (text !== previous) {
-      if (text === "idle") {
-        if (previous && previous !== "idle") {
-          reportAction("idle");
-        }
-      } else {
-        reportAction(text);
-      }
-    }
     renderStatus();
   };
 

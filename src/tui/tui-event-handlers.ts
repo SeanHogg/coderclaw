@@ -47,8 +47,47 @@ export function createEventHandlers(context: EventHandlerContext) {
   } = context;
   const finalizedRuns = new Map<string, number>();
   const sessionRuns = new Map<string, number>();
+  const pendingFinalTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+  const FINAL_EVENT_GRACE_MS = 3_000;
   let streamAssembler = new TuiStreamAssembler();
   let lastSessionKey = state.currentSessionKey;
+
+  const clearPendingFinalTimeout = (runId: string) => {
+    const timer = pendingFinalTimeouts.get(runId);
+    if (!timer) {
+      return;
+    }
+    clearTimeout(timer);
+    pendingFinalTimeouts.delete(runId);
+  };
+
+  const clearAllPendingFinalTimeouts = () => {
+    for (const timer of pendingFinalTimeouts.values()) {
+      clearTimeout(timer);
+    }
+    pendingFinalTimeouts.clear();
+  };
+
+  const scheduleFinalEventTimeout = (runId: string) => {
+    clearPendingFinalTimeout(runId);
+    const timer = setTimeout(() => {
+      pendingFinalTimeouts.delete(runId);
+      if (finalizedRuns.has(runId)) {
+        return;
+      }
+      if (state.activeChatRunId !== runId) {
+        return;
+      }
+      sessionRuns.delete(runId);
+      clearActiveRunIfMatch(runId);
+      maybeRefreshHistoryForRun(runId);
+      setActivityStatus("idle");
+      reportAction?.("run settled to idle (final event not received)");
+      tui.requestRender();
+    }, FINAL_EVENT_GRACE_MS);
+    timer.unref?.();
+    pendingFinalTimeouts.set(runId, timer);
+  };
 
   const pruneRunMap = (runs: Map<string, number>) => {
     if (runs.size <= 200) {
@@ -80,6 +119,7 @@ export function createEventHandlers(context: EventHandlerContext) {
     lastSessionKey = state.currentSessionKey;
     finalizedRuns.clear();
     sessionRuns.clear();
+    clearAllPendingFinalTimeouts();
     streamAssembler = new TuiStreamAssembler();
     clearLocalRunIds?.();
   };
@@ -90,6 +130,7 @@ export function createEventHandlers(context: EventHandlerContext) {
   };
 
   const noteFinalizedRun = (runId: string) => {
+    clearPendingFinalTimeout(runId);
     finalizedRuns.set(runId, Date.now());
     sessionRuns.delete(runId);
     streamAssembler.drop(runId);
@@ -147,6 +188,7 @@ export function createEventHandlers(context: EventHandlerContext) {
       reportAction?.("run started");
     }
     if (evt.state === "delta") {
+      clearPendingFinalTimeout(evt.runId);
       const displayText = streamAssembler.ingestDelta(evt.runId, evt.message, state.showThinking);
       if (!displayText) {
         return;
@@ -210,6 +252,7 @@ export function createEventHandlers(context: EventHandlerContext) {
       void refreshSessionInfo?.();
     }
     if (evt.state === "aborted") {
+      clearPendingFinalTimeout(evt.runId);
       const wasActiveRun = state.activeChatRunId === evt.runId;
       chatLog.addSystem("run aborted");
       streamAssembler.drop(evt.runId);
@@ -223,6 +266,7 @@ export function createEventHandlers(context: EventHandlerContext) {
       maybeRefreshHistoryForRun(evt.runId);
     }
     if (evt.state === "error") {
+      clearPendingFinalTimeout(evt.runId);
       const wasActiveRun = state.activeChatRunId === evt.runId;
       chatLog.addSystem(`run error: ${evt.errorMessage ?? "unknown"}`);
       streamAssembler.drop(evt.runId);
@@ -256,9 +300,6 @@ export function createEventHandlers(context: EventHandlerContext) {
       const verbose = state.sessionInfo.verboseLevel ?? "off";
       const allowToolEvents = verbose !== "off";
       const allowToolOutput = verbose === "full";
-      if (!allowToolEvents) {
-        return;
-      }
       const data = evt.data ?? {};
       const phase = asString(data.phase, "");
       const toolCallId = asString(data.toolCallId, "");
@@ -266,11 +307,21 @@ export function createEventHandlers(context: EventHandlerContext) {
       if (!toolCallId) {
         return;
       }
+      // Always report tool activity in the trace, regardless of verbose level
+      if (phase === "start") {
+        reportAction?.(`tool: ${toolName}`);
+      } else if (phase === "result" && Boolean(data.isError)) {
+        reportAction?.(`tool failed: ${toolName}`);
+      }
+      if (!allowToolEvents) {
+        tui.requestRender();
+        return;
+      }
       if (phase === "start") {
         chatLog.startTool(toolCallId, toolName, data.args);
-        reportAction?.(`tool start: ${toolName}`);
       } else if (phase === "update") {
         if (!allowToolOutput) {
+          tui.requestRender();
           return;
         }
         chatLog.updateToolResult(toolCallId, data.partialResult, {
@@ -284,9 +335,6 @@ export function createEventHandlers(context: EventHandlerContext) {
         } else {
           chatLog.updateToolResult(toolCallId, { content: [] }, { isError: Boolean(data.isError) });
         }
-        reportAction?.(
-          Boolean(data.isError) ? `tool failed: ${toolName}` : `tool complete: ${toolName}`,
-        );
       }
       tui.requestRender();
       return;
@@ -301,11 +349,9 @@ export function createEventHandlers(context: EventHandlerContext) {
         reportAction?.("agent execution started");
       }
       if (phase === "end") {
-        sessionRuns.delete(evt.runId);
-        clearActiveRunIfMatch(evt.runId);
-        maybeRefreshHistoryForRun(evt.runId);
-        setActivityStatus("idle");
-        reportAction?.("agent execution finished");
+        setActivityStatus("waiting");
+        reportAction?.("agent execution finished; awaiting final response");
+        scheduleFinalEventTimeout(evt.runId);
       }
       if (phase === "error") {
         const errorMessage =

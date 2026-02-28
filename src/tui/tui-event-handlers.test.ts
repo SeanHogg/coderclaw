@@ -173,7 +173,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     expect(tui.requestRender).toHaveBeenCalledTimes(1);
   });
 
-  it("clears active run on lifecycle end to avoid stuck busy state", () => {
+  it("keeps active run on lifecycle end while waiting for final chat event", () => {
     const { state, setActivityStatus, loadHistory, handleAgentEvent } = createHandlersHarness({
       state: { activeChatRunId: "run-end" },
     });
@@ -184,9 +184,35 @@ describe("tui-event-handlers: handleAgentEvent", () => {
       data: { phase: "end" },
     });
 
-    expect(setActivityStatus).toHaveBeenCalledWith("idle");
-    expect(state.activeChatRunId).toBeNull();
-    expect(loadHistory).toHaveBeenCalledTimes(1);
+    expect(setActivityStatus).toHaveBeenCalledWith("waiting");
+    expect(state.activeChatRunId).toBe("run-end");
+    expect(loadHistory).not.toHaveBeenCalled();
+  });
+
+  it("falls back to idle when final chat event is not received", () => {
+    vi.useFakeTimers();
+    try {
+      const { state, setActivityStatus, loadHistory, handleAgentEvent } = createHandlersHarness({
+        state: { activeChatRunId: "run-timeout" },
+      });
+
+      handleAgentEvent({
+        runId: "run-timeout",
+        stream: "lifecycle",
+        data: { phase: "end" },
+      });
+
+      expect(setActivityStatus).toHaveBeenCalledWith("waiting");
+      expect(state.activeChatRunId).toBe("run-timeout");
+
+      vi.advanceTimersByTime(3001);
+
+      expect(setActivityStatus).toHaveBeenCalledWith("idle");
+      expect(state.activeChatRunId).toBeNull();
+      expect(loadHistory).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("surfaces lifecycle error details and clears active run", () => {
@@ -309,7 +335,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     expect(tui.requestRender).not.toHaveBeenCalled();
   });
 
-  it("suppresses tool events when verbose is off", () => {
+  it("suppresses tool chat-log entries when verbose is off but still renders", () => {
     const { chatLog, tui, handleAgentEvent } = createHandlersHarness({
       state: {
         activeChatRunId: "run-123",
@@ -324,7 +350,8 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     });
 
     expect(chatLog.startTool).not.toHaveBeenCalled();
-    expect(tui.requestRender).not.toHaveBeenCalled();
+    // Still renders because tool activity is reported in the status trace
+    expect(tui.requestRender).toHaveBeenCalledTimes(1);
   });
 
   it("omits tool output when verbose is on (non-full)", () => {
