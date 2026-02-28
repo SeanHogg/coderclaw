@@ -12,7 +12,7 @@ agent features.
 
 ## Gap 1: Orchestrate Tool Creates But Never Executes Workflows
 
-**Status**: FACADE — code exists, never runs
+**Status**: IN PROGRESS — spawn stub implemented, test added
 
 **Evidence**:
 - `src/coderclaw/tools/orchestrate-tool.ts` line 96: calls

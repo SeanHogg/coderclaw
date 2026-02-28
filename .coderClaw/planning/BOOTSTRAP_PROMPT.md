@@ -31,7 +31,7 @@ Do **not** use these non-existent paths:
 
 ## Current State (facade — nothing executes)
 
-- `orchestrate` tool creates workflows but never calls `executeWorkflow()`
+- ✅ `orchestrate` now creates workflows and calls `executeWorkflow()`
 - Agent roles defined but never applied to subagents
 - Session handoff functions exist but have zero callers
 - `.coderClaw/` never updated after tasks complete
@@ -51,11 +51,11 @@ For each roadmap item in one session:
 6. **Commit** — `scripts/committer`, Conventional Commits
 7. **Update knowledge** — note what changed, new gaps found, suggest next item
 
-## Start: Phase -1.1
+## Start: Phase -1.2
 
-Wire `executeWorkflow()` into the orchestrate tool. This unblocks the entire multi-agent system.
+Bridge `agent-roles.ts` into runtime so subagents actually receive role prompts/model/tool allowlists.
 
-Read `src/coderclaw/tools/orchestrate-tool.ts` and `src/coderclaw/orchestrator.ts`, then plan.
+Read `src/agents/agent-roles.ts`, `src/agents/subagent-spawn.ts`, and `src/coderclaw/orchestrator.ts`, then plan.
 
 ## Constraints
 
@@ -70,17 +70,17 @@ Read `src/coderclaw/tools/orchestrate-tool.ts` and `src/coderclaw/orchestrator.t
 
 ## Subsequent Sessions
 
-After Phase -1.1, start next session with:
+After Phase -1.2, start next session with:
 
 ```
 Resume coderClaw self-improvement. Read .coderClaw/planning/CAPABILITY_GAPS.md
-for gap status. Previous session completed Phase -1.1. Next: Phase -1.2
-(bridge agent-roles into runtime). Read ROADMAP.md Phase -1.2 and plan.
+for gap status. Previous session completed Phase -1.2. Next: Phase -1.3
+(wire session handoff save/load). Read ROADMAP.md Phase -1.3 and plan.
 ```
 
 Adjust per phase. After Phase -1.3 (session handoff), coderClaw auto-loads prior handoff — no manual preamble needed.
 
-## Post Phase -1.1 + -1.2: Use Multi-Agent Workflows
+## Post Phase -1.2 + -1.3: Use Multi-Agent Workflows
 
 Once orchestrator executes workflows AND applies roles, switch to:
 

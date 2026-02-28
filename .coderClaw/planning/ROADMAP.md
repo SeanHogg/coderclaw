@@ -7,9 +7,9 @@ Last synced: 2026-02-28
 
 ## Phase -1 (Must do first)
 
-### -1.1 Wire `executeWorkflow()` into `orchestrate`
-- `src/coderclaw/tools/orchestrate-tool.ts` currently creates workflows but does not execute them.
-- Ensure `globalOrchestrator.executeWorkflow()` is called with proper `SpawnSubagentContext`.
+### -1.1 Wire `executeWorkflow()` into `orchestrate` ✅
+- Completed: `src/coderclaw/tools/orchestrate-tool.ts` now calls `globalOrchestrator.executeWorkflow()` with `SpawnSubagentContext`.
+- Keep this as a regression check item (do not re-open unless behavior regresses).
 
 ### -1.2 Bridge `agent-roles.ts` into runtime
 - Apply role prompts/model/tool allowlists during subagent spawn.
