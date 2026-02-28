@@ -408,6 +408,42 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     expect(loadHistory).toHaveBeenCalledTimes(1);
   });
 
+  it("schedules session-info refresh backfill after final events", () => {
+    vi.useFakeTimers();
+    try {
+      const state = makeState({ activeChatRunId: null });
+      const context = makeContext(state);
+      const refreshSessionInfo = vi.fn().mockResolvedValue(undefined);
+      const { handleChatEvent } = createEventHandlers({
+        chatLog: context.chatLog,
+        tui: context.tui,
+        state,
+        setActivityStatus: context.setActivityStatus,
+        loadHistory: context.loadHistory,
+        refreshSessionInfo,
+        isLocalRunId: context.isLocalRunId,
+        forgetLocalRunId: context.forgetLocalRunId,
+      });
+
+      handleChatEvent({
+        runId: "run-refresh",
+        sessionKey: state.currentSessionKey,
+        state: "final",
+        message: { content: [{ type: "text", text: "done" }] },
+      });
+
+      expect(refreshSessionInfo).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(700);
+      expect(refreshSessionInfo).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(1500);
+      expect(refreshSessionInfo).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   function createConcurrentRunHarness(localContent = "partial") {
     const { state, chatLog, setActivityStatus, loadHistory, handleChatEvent } =
       createHandlersHarness({

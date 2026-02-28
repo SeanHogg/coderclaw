@@ -49,6 +49,10 @@ export function createEventHandlers(context: EventHandlerContext) {
   const sessionRuns = new Map<string, number>();
   const pendingFinalTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
   const FINAL_EVENT_GRACE_MS = 3_000;
+  const SESSION_REFRESH_BACKFILL_DELAY_MS = 1_500;
+  const SESSION_REFRESH_MIN_INTERVAL_MS = 2_500;
+  let pendingSessionRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastSessionRefreshRequestedAt = 0;
   let streamAssembler = new TuiStreamAssembler();
   let lastSessionKey = state.currentSessionKey;
 
@@ -66,6 +70,41 @@ export function createEventHandlers(context: EventHandlerContext) {
       clearTimeout(timer);
     }
     pendingFinalTimeouts.clear();
+  };
+
+  const clearPendingSessionRefreshTimer = () => {
+    if (!pendingSessionRefreshTimer) {
+      return;
+    }
+    clearTimeout(pendingSessionRefreshTimer);
+    pendingSessionRefreshTimer = null;
+  };
+
+  const scheduleSessionInfoRefresh = () => {
+    if (!refreshSessionInfo) {
+      return;
+    }
+    const now = Date.now();
+    if (now - lastSessionRefreshRequestedAt < SESSION_REFRESH_MIN_INTERVAL_MS) {
+      return;
+    }
+    lastSessionRefreshRequestedAt = now;
+    void refreshSessionInfo();
+    clearPendingSessionRefreshTimer();
+    const shouldBackfill =
+      typeof state.sessionInfo.totalTokens !== "number" || state.sessionInfo.totalTokens <= 0;
+    if (!shouldBackfill) {
+      return;
+    }
+    pendingSessionRefreshTimer = setTimeout(() => {
+      pendingSessionRefreshTimer = null;
+      if (typeof state.sessionInfo.totalTokens === "number" && state.sessionInfo.totalTokens > 0) {
+        return;
+      }
+      lastSessionRefreshRequestedAt = Date.now();
+      void refreshSessionInfo();
+    }, SESSION_REFRESH_BACKFILL_DELAY_MS);
+    pendingSessionRefreshTimer.unref?.();
   };
 
   const scheduleFinalEventTimeout = (runId: string) => {
@@ -120,6 +159,7 @@ export function createEventHandlers(context: EventHandlerContext) {
     finalizedRuns.clear();
     sessionRuns.clear();
     clearAllPendingFinalTimeouts();
+    clearPendingSessionRefreshTimer();
     streamAssembler = new TuiStreamAssembler();
     clearLocalRunIds?.();
   };
@@ -206,7 +246,7 @@ export function createEventHandlers(context: EventHandlerContext) {
         if (wasActiveRun) {
           setActivityStatus("idle");
         }
-        void refreshSessionInfo?.();
+        scheduleSessionInfoRefresh();
         tui.requestRender();
         return;
       }
@@ -222,7 +262,7 @@ export function createEventHandlers(context: EventHandlerContext) {
         if (wasActiveRun) {
           setActivityStatus("idle");
         }
-        void refreshSessionInfo?.();
+        scheduleSessionInfoRefresh();
         tui.requestRender();
         return;
       }
@@ -249,7 +289,7 @@ export function createEventHandlers(context: EventHandlerContext) {
       }
       reportAction?.(stopReason === "error" ? "run ended with error" : "run completed");
       // Refresh session info to update token counts in footer
-      void refreshSessionInfo?.();
+      scheduleSessionInfoRefresh();
     }
     if (evt.state === "aborted") {
       clearPendingFinalTimeout(evt.runId);
@@ -262,7 +302,7 @@ export function createEventHandlers(context: EventHandlerContext) {
         setActivityStatus("aborted");
       }
       reportAction?.("run aborted");
-      void refreshSessionInfo?.();
+      scheduleSessionInfoRefresh();
       maybeRefreshHistoryForRun(evt.runId);
     }
     if (evt.state === "error") {
@@ -276,7 +316,7 @@ export function createEventHandlers(context: EventHandlerContext) {
         setActivityStatus("error");
       }
       reportAction?.("run error");
-      void refreshSessionInfo?.();
+      scheduleSessionInfoRefresh();
       maybeRefreshHistoryForRun(evt.runId);
     }
     tui.requestRender();
@@ -364,7 +404,7 @@ export function createEventHandlers(context: EventHandlerContext) {
         noteFinalizedRun(evt.runId);
         clearActiveRunIfMatch(evt.runId);
         maybeRefreshHistoryForRun(evt.runId);
-        void refreshSessionInfo?.();
+        scheduleSessionInfoRefresh();
         setActivityStatus("error");
         reportAction?.("agent execution error");
       }
