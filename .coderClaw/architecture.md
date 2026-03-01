@@ -85,17 +85,19 @@ Human Developer (TUI / IDE / messaging channel)
 
 ### CoderClaw Layer (`src/coderclaw/`)
 
-- `agent-roles.ts` — 7 built-in role definitions (⚠️ not wired to runtime yet)
-- `orchestrator.ts` — workflow engine, dependency DAG, task scheduling
-- `orchestrator-enhanced.ts` — distributed orchestrator (Phase 2 target)
-- `project-context.ts` — `.coderClaw/` directory management, YAML I/O
+- `agent-roles.ts` — 7 built-in roles + custom role loading from `.coderClaw/agents/`
+- `orchestrator.ts` — workflow engine, dependency DAG, task scheduling, disk persistence,
+  `remote:<clawId>` routing via `dispatchToRemoteClaw`
+- `project-context.ts` — `.coderClaw/` directory management, YAML I/O, session handoff,
+  workflow state persistence, knowledge memory append
 - `types.ts` — ProjectContext, AgentRole, SessionHandoff, CodeMap types
-- `tools/` — orchestrate, workflow_status, code_analysis, project_knowledge, git_history
+- `tools/` — orchestrate, workflow_status, code_analysis, project_knowledge (incl. memory),
+  git_history, save_session_handoff, claw_fleet
 
 ### TUI (`src/tui/`)
 
 - Ink + React terminal interface
-- Slash commands: /agent, /model, /init, /session, /think, /compact, /cost
+- Slash commands: /agent, /model, /init, /session, /think, /compact, /cost, /handoff
 - `tui-command-handlers.ts` — command dispatch
 
 ### Transport (`src/transport/`)
@@ -129,18 +131,46 @@ Human Developer (TUI / IDE / messaging channel)
 - `gh-issues`, `github`: Git/GitHub workflow automation
 - `coding-agent`: core coding skill used by all code-creation agents
 
-## Known Architectural Gaps
+## Capability Status
 
-See `.coderClaw/planning/CAPABILITY_GAPS.md` for the full audit. Current status:
+All enabling gaps closed as of 2026.3.1. See `.coderClaw/planning/CAPABILITY_GAPS.md` for details.
 
-1. ✅ PARTIAL — `executeWorkflow()` now called; `planning`/`adversarial` workflow types exist
-   in `orchestrator-enhanced.ts` but not yet wired into the tool switch
-2. ✅ RESOLVED — `agent-roles.ts` wired; gateway loads custom roles from `.coderClaw/agents/`
-   on startup; `findAgentRole` used by orchestrator's `executeTask`
-3. MISSING — Session handoff: `saveSessionHandoff`/`loadLatestSessionHandoff` implemented
-   but never called from the agent lifecycle
-4. MISSING — Workflow persistence: orchestrator state is in-memory only (`Map<string, Workflow>`)
-5. MISSING — Post-task knowledge loop: `.coderClaw/memory/` never indexed; no post-task hook
+1. ✅ RESOLVED — `executeWorkflow()` wired into `orchestrate` tool; all 6 workflow types execute
+2. ✅ RESOLVED — `agent-roles.ts` wired; custom roles loaded from `.coderClaw/agents/` at startup
+3. ✅ RESOLVED — Session handoff: `save_session_handoff` tool + `/handoff` cmd + auto-load on session start
+4. ✅ RESOLVED — Workflow persistence: checkpoints to `.coderClaw/sessions/workflow-<id>.yaml`;
+   incomplete workflows restored at gateway restart
+5. ✅ RESOLVED — Knowledge loop: `KnowledgeLoopService` writes `.coderClaw/memory/YYYY-MM-DD.md`
+   after each run; auto-synced to CoderClawLink; `project_knowledge memory` query added
+6. ✅ RESOLVED — Claw-to-claw mesh: fleet discovery, capability reporting, `/forward` HTTP dispatch,
+   `claw_fleet` tool, `remote:<clawId>` orchestrator routing
+
+### New Subsystems (2026.3.1)
+
+**Session Handoff** (`src/coderclaw/tools/save-session-handoff-tool.ts`):
+
+- Agent tool that writes `.coderClaw/sessions/<id>.yaml` with summary, decisions, next steps
+- TUI loads latest handoff on session start and shows a system message
+- `/handoff` slash command triggers agent to produce and save a handoff
+
+**Workflow Persistence** (`src/coderclaw/project-context.ts`, `orchestrator.ts`):
+
+- `saveWorkflowState()` — serializes full workflow (Map→Record, Date→ISO string) to YAML
+- `loadPersistedWorkflows()` — scans `sessions/` and hydrates incomplete workflows at startup
+- `resumeWorkflow()` — picks up from last checkpoint; in-flight tasks reset to `pending`
+
+**Knowledge Loop** (`src/infra/knowledge-loop.ts`):
+
+- Subscribes to `onAgentEvent`; accumulates tool/file activity per run
+- On `lifecycle.end`: appends timestamped entry to `.coderClaw/memory/YYYY-MM-DD.md`
+- Calls `syncCoderClawDirectory()` to push the updated file to CoderClawLink
+
+**Claw-to-Claw Mesh** (`src/infra/remote-subagent.ts`, `src/coderclaw/tools/claw-fleet-tool.ts`):
+
+- `claw_fleet` tool: queries `GET /api/claws/fleet` (claw-keyed auth) → returns online claws + capabilities
+- `remote:<clawId>` orchestrator role: dispatches task via `POST /api/claws/:id/forward`
+- Target claw receives `remote.task` via WS; executes as local chat message
+- `ClawLinkRelayService` heartbeat now reports `capabilities: ["chat","tasks","relay","remote-dispatch"]`
 
 ## Data Flow: Agent Task Execution
 

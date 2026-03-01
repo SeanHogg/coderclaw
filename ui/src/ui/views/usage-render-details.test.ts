@@ -1,10 +1,9 @@
-import { render } from "lit";
 import { describe, it, expect } from "vitest";
 import {
   computeFilteredUsage,
   CHART_BAR_WIDTH_RATIO,
   CHART_MAX_BAR_WIDTH,
-  renderSessionLogsCompact,
+  getSessionLogTerminalTags,
 } from "./usage-render-details.ts";
 import type { SessionLogEntry, TimeSeriesPoint, UsageSessionEntry } from "./usageTypes.ts";
 
@@ -133,9 +132,8 @@ describe("chart bar sizing", () => {
   });
 });
 
-describe("renderSessionLogsCompact", () => {
-  it("shows stop reason and error details for historical assistant messages", () => {
-    const container = document.createElement("div");
+describe("getSessionLogTerminalTags", () => {
+  it("returns stop reason and error details for historical assistant messages", () => {
     const logs: SessionLogEntry[] = [
       {
         timestamp: 1_700_000_000_000,
@@ -145,24 +143,9 @@ describe("renderSessionLogsCompact", () => {
         errorMessage: "Tool failed: run_in_terminal",
       },
     ];
-
-    render(
-      renderSessionLogsCompact(
-        logs,
-        false,
-        false,
-        () => undefined,
-        { roles: [], tools: [], hasTools: false, query: "" },
-        () => undefined,
-        () => undefined,
-        () => undefined,
-        () => undefined,
-        () => undefined,
-      ),
-      container,
-    );
-
-    expect(container.textContent).toContain("error: Tool failed: run_in_terminal");
-    expect(container.textContent).toContain("stop: tool_error");
+    expect(getSessionLogTerminalTags(logs[0]!)).toEqual([
+      "error: Tool failed: run_in_terminal",
+      "stop: tool_error",
+    ]);
   });
 });

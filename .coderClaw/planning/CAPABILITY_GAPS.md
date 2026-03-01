@@ -297,13 +297,13 @@ Orchestrator sees step: { role: "remote:456", task: "Implement feature X" }
 
 ## Priority Order
 
-| Priority | Gap                           | Status   | Why next                                                                   |
-| -------- | ----------------------------- | -------- | -------------------------------------------------------------------------- |
-| ✅ done  | **-1.1** Wire executeWorkflow | RESOLVED | All workflow types execute synchronously via orchestrate tool              |
-| ✅ done  | **-1.2** Wire agent roles     | RESOLVED | Built-in + custom roles loaded and enforced at spawn time                  |
-| ✅ done  | **-1.3** Wire session handoff | PARTIAL  | Save/load is wired; automatic save on exit/new still missing               |
-| ✅ done  | **-1.4** Workflow persistence | RESOLVED | Checkpoints + restore + resume after gateway restart                       |
-| ✅ done  | **-1.5** Knowledge loop       | PARTIAL  | Activity log + sync + memory query wired; semantic synthesis still missing |
+| Priority | Gap                           | Status   | Why next                                                                         |
+| -------- | ----------------------------- | -------- | -------------------------------------------------------------------------------- |
+| ✅ done  | **-1.1** Wire executeWorkflow | RESOLVED | All workflow types execute synchronously via orchestrate tool                    |
+| ✅ done  | **-1.2** Wire agent roles     | RESOLVED | Built-in + custom roles loaded and enforced at spawn time                        |
+| ✅ done  | **-1.3** Wire session handoff | PARTIAL  | Save/load is wired; automatic save on exit/new still missing                     |
+| ✅ done  | **-1.4** Workflow persistence | RESOLVED | Checkpoints + restore + resume after gateway restart                             |
+| ✅ done  | **-1.5** Knowledge loop       | PARTIAL  | Activity log + sync + memory query wired; semantic synthesis still missing       |
 | ✅ done  | **-1.6b** Claw-to-claw mesh   | RESOLVED | Fleet discovery, capability reporting, `/forward` dispatch, orchestrator routing |
 
 All enabling gaps are now resolved.

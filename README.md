@@ -26,12 +26,15 @@
 | **Multi-agent orchestration**              | ✅ 7 built-in roles + custom           | ❌ Single inline suggestion | ❌ Single agent    | ❌ Single agent    |
 | **Planning workflow (PRD → Arch → Tasks)** | ✅ Built-in                            | ❌                          | ❌                 | ❌                 |
 | **Adversarial review pass**                | ✅ Built-in                            | ❌                          | ❌                 | ❌                 |
-| **Session handoffs**                       | ✅ `.coderClaw/sessions/`              | ❌                          | ❌                 | ❌                 |
+| **Session handoffs**                       | ✅ `/handoff` cmd + auto-load          | ❌                          | ❌                 | ❌                 |
+| **Workflow persistence across restarts**   | ✅ `.coderClaw/sessions/`              | ❌                          | ❌                 | ❌                 |
+| **Post-task knowledge loop**               | ✅ `.coderClaw/memory/` auto-updated   | ❌                          | ❌                 | ❌                 |
+| **Claw-to-claw distributed delegation**    | ✅ `remote:<clawId>` orchestration     | ❌                          | ❌                 | ❌                 |
 | **Deep AST + semantic analysis**           | ✅                                     | ❌                          | ⚠️ Basic RAG       | ⚠️ Basic RAG       |
 | **Persistent project knowledge**           | ✅ `.coderClaw/`                       | ❌                          | ⚠️ In-session only | ⚠️ In-session only |
 | **Works in WhatsApp / Telegram / Slack**   | ✅                                     | ❌                          | ❌                 | ❌                 |
 | **Any model provider**                     | ✅ Anthropic, OpenAI, Gemini, Copilot… | ❌ GPT-4o / Claude only     | ❌ Limited         | ❌ Anthropic only  |
-| **RBAC + audit trails**                    | ✅ Phase 2                             | ❌                          | ❌                 | ❌                 |
+| **RBAC + audit trails**                    | ✅                                     | ❌                          | ❌                 | ❌                 |
 | **Open source (MIT)**                      | ✅                                     | ❌                          | ❌                 | ❌                 |
 
 CoderClaw is not a plugin or an IDE extension. It is a **full orchestration runtime** that understands your codebase, coordinates specialized agents, and works wherever you do — in your terminal, your chat apps, or your CI pipeline.

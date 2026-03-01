@@ -1,39 +1,38 @@
 # Changelog
 
-## 2026.3.1-beta.3
+## 2026.3.1
 
 ### Changes
 
-- Claw-to-claw mesh — fleet discovery: `GET /api/claws/fleet?from=<clawId>&key=<apiKey>` (CoderClawLink) returns all claws in the same tenant with name, online status, lastSeenAt, and capabilities array. Registered before `/:id` routes to prevent param capture.
-- Claw-to-claw mesh — capability persistence: `PATCH /api/claws/:id/heartbeat` now accepts a `{ capabilities: string[] }` body and persists it to the new `capabilities TEXT` column (migration `0007_claw_capabilities.sql`). `ClawLinkRelayService.sendHeartbeat()` sends `["chat","tasks","relay","remote-dispatch"]` on every heartbeat.
-- Claw-to-claw mesh — forwarding: `POST /api/claws/:id/forward?from=<sourceId>&key=<sourceKey>` (CoderClawLink) authenticates the source claw, verifies the target is in the same tenant, and delivers the JSON payload to the target claw via `ClawRelayDO` dispatch.
-- Claw-to-claw mesh — remote task handling: `ClawLinkRelayService.handleRelayMessage` now processes `remote.task` messages by dispatching the task as a local `chat.send` with a `[Remote task from claw <id>]` prefix.
-- Claw-to-claw mesh — `claw_fleet` tool: new `AgentTool` that calls `GET /api/claws/fleet`; returns fleet with capabilities and online status; hints at `remote:<id>` role format. Registered in `createCoderClawTools()`.
-- Claw-to-claw mesh — `remote-subagent.ts`: `dispatchToRemoteClaw(opts, targetClawId, task)` POSTs to `/api/claws/:id/forward` and returns `{ status: "accepted" | "rejected" }`.
-- Claw-to-claw mesh — orchestrator routing: `AgentOrchestrator.setRemoteDispatchOptions()` added; `executeTask()` now branches on `agentRole.startsWith("remote:")` and calls `dispatchToRemoteClaw` instead of `spawnSubagentDirect`. Gateway startup calls `setRemoteDispatchOptions` when claw credentials are configured.
-- CoderClawLink `tenantRoutes.ts`: `GET /api/tenants/:id/claws` now reads real `capabilities` from the DB; `capabilitySummary.remoteDispatch` is `true` only when the claw is online and reports `"remote-dispatch"` capability.
+**Session Handoff**
 
-## 2026.3.1-beta.2
+- `save_session_handoff` agent tool — writes `.coderClaw/sessions/<id>.yaml` with summary, decisions, next steps, open questions, and artifacts. Registered in `createCoderClawTools()`.
+- TUI loads the latest handoff on session start and shows "Resuming from session …" with summary, decisions, and next steps. Silent no-op when `.coderClaw/` does not exist.
+- `/handoff` slash command — prompts the connected agent to produce and save a session handoff.
 
-### Changes
+**Workflow Persistence**
 
-- Session handoff: `save_session_handoff` tool added — agents can call it with a summary, decisions, next steps, open questions, and artifacts to write `.coderClaw/sessions/<id>.yaml`. Registered in `createCoderClawTools()`.
-- Session handoff: `setSession()` in the TUI now loads the latest handoff from `.coderClaw/sessions/` after history loads and displays "Resuming from session …" with summary, decisions, and next steps. Silent no-op when `.coderClaw/` does not exist.
-- Session handoff: `/handoff` slash command added — prompts the connected agent to call `save_session_handoff` and record a session summary.
-- Workflow persistence: `saveWorkflowState` / `loadWorkflowState` / `listIncompleteWorkflowIds` added to `project-context.ts`. Workflows are serialized to `.coderClaw/sessions/workflow-<id>.yaml` after every task state change.
-- Workflow persistence: `AgentOrchestrator.persistWorkflow()`, `hydrateWorkflow()`, `loadPersistedWorkflows()`, and `resumeWorkflow()` added. Incomplete workflows are restored from disk at gateway startup and logged.
-- Workflow persistence: Gateway startup (`startGatewaySidecars`) calls `globalOrchestrator.setProjectRoot()` and `loadPersistedWorkflows()` early in the boot sequence.
+- `saveWorkflowState` / `loadWorkflowState` / `listIncompleteWorkflowIds` in `project-context.ts` — serialize workflows to `.coderClaw/sessions/workflow-<id>.yaml` after every task state change.
+- `AgentOrchestrator`: `persistWorkflow()`, `hydrateWorkflow()`, `loadPersistedWorkflows()`, `resumeWorkflow()` added. Incomplete workflows are restored from disk at gateway startup. In-flight tasks reset to `pending` on restore so they re-execute on resume.
+- Gateway startup calls `globalOrchestrator.setProjectRoot()` and `loadPersistedWorkflows()` early in the boot sequence and logs restored workflow IDs.
 
-Docs: https://docs.coderclaw.ai
+**Post-Task Knowledge Loop**
 
-## 2026.3.1-beta.1
+- `KnowledgeLoopService` — subscribes to `onAgentEvent`; writes timestamped activity entries (files created/edited, tools used) to `.coderClaw/memory/YYYY-MM-DD.md` after each run; auto-syncs the full `.coderClaw/` directory to CoderClawLink.
+- `syncCoderClawDirectory()` extracted as a standalone reusable export — callable any time, not just on gateway startup.
+- `appendKnowledgeMemory()` added to `project-context.ts`.
+- `project_knowledge` tool: new `"memory"` query type reads the last 7 `.coderClaw/memory/*.md` files. Included in `"all"`.
 
-### Changes
+**Claw-to-Claw Mesh Delegation**
 
-- Knowledge loop: `KnowledgeLoopService` now writes a timestamped activity entry to `.coderClaw/memory/YYYY-MM-DD.md` after every agent run (files created/edited, tools used), then syncs the full `.coderClaw/` directory to CoderClawLink if credentials are configured.
-- Knowledge loop: `syncCoderClawDirectory()` extracted as a standalone reusable export from `clawlink-directory-sync.ts` — callable at any time, not just on gateway startup. `syncCoderClawDirectoryOnStartup` is now a thin wrapper.
-- Knowledge loop: `appendKnowledgeMemory()` added to `project-context.ts` — appends entries to `.coderClaw/memory/YYYY-MM-DD.md`, creating the file and directory as needed.
-- Project knowledge tool: new `"memory"` query type reads the last 7 `.coderClaw/memory/*.md` files and returns them joined with separators. Also included in `"all"`.
+- `GET /api/claws/fleet` (CoderClawLink) — claw-authenticated fleet discovery; returns all claws in the tenant with online status and capabilities.
+- `PATCH /api/claws/:id/heartbeat` now accepts `{ capabilities: string[] }` and persists to a new `capabilities` column (migration `0007`). Heartbeat sends `["chat","tasks","relay","remote-dispatch"]`.
+- `POST /api/claws/:id/forward` — source-claw-authenticated dispatch; delivers JSON payload to target claw via `ClawRelayDO`.
+- `ClawLinkRelayService` handles `remote.task` messages by dispatching them as local `chat.send`.
+- `claw_fleet` agent tool — queries fleet, returns capabilities, hints at `remote:<id>` role format.
+- `dispatchToRemoteClaw()` in `remote-subagent.ts` — POSTs to `/forward`, returns `{ status: "accepted" | "rejected" }`.
+- Orchestrator: `setRemoteDispatchOptions()` + `remote:<clawId>` role routing — bypasses local `spawnSubagentDirect`, calls `dispatchToRemoteClaw` instead.
+- `GET /api/tenants/:id/claws` now reads real capabilities from DB; `capabilitySummary.remoteDispatch` is `true` only when online and reporting the capability.
 
 Docs: https://docs.coderclaw.ai
 

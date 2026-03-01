@@ -84,6 +84,7 @@ pnpm install --lockfile-only
 - Keep PRs focused (one thing per PR; do not mix unrelated concerns)
 - Describe what & why
 - **Never manually edit `version` in `package.json`** — use `pnpm release` (or `pnpm plugins:sync` after a root version bump) to keep all extension versions in sync. CI will fail if versions diverge.
+- **Never add `Co-Authored-By` trailers** to commit messages — not for AI tools, not for anything. Keep commit messages clean.
 
 ## Control UI Decorators
 
