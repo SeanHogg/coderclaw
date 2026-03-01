@@ -13,7 +13,7 @@ import { randomUUID } from "node:crypto";
 import { WebSocket } from "ws";
 import { GatewayClient, type GatewayClientOptions } from "../gateway/client.js";
 import type { EventFrame } from "../gateway/protocol/index.js";
-import { logDebug } from "../logger.js";
+import { logDebug, logWarn } from "../logger.js";
 
 export type ClawLinkRelayOptions = {
   /** Base HTTP(S) URL of coderClawLink, e.g. "https://api.coderclaw.ai" */
@@ -36,6 +36,38 @@ export class ClawLinkRelayService {
   private readonly upstreamWsUrl: string;
   private readonly heartbeatHttpUrl: string;
   private readonly gatewayWsUrl: string;
+
+  private dispatchTaskFromRelay(payload: {
+    title: string;
+    description?: string;
+    executionId?: number;
+    taskId?: number;
+    sourceType: "task.assign" | "task.broadcast";
+  }): void {
+    const lines = [
+      `[ClawLink ${payload.sourceType}] ${payload.title}`,
+      payload.description ? "" : undefined,
+      payload.description,
+      payload.executionId != null ? "" : undefined,
+      payload.executionId != null ? `Execution ID: ${payload.executionId}` : undefined,
+      payload.taskId != null ? `Task ID: ${payload.taskId}` : undefined,
+    ].filter((line): line is string => typeof line === "string");
+
+    const message = lines.join("\n").trim();
+    if (!message) {
+      return;
+    }
+
+    this.gatewayClient
+      ?.request("chat.send", {
+        sessionKey: "default",
+        message,
+        idempotencyKey: `task-${payload.sourceType}-${payload.taskId ?? "na"}-${payload.executionId ?? Date.now()}`,
+      })
+      .catch((err: unknown) => {
+        logWarn(`[clawlink] ${payload.sourceType} dispatch failed: ${String(err)}`);
+      });
+  }
 
   constructor(private readonly opts: ClawLinkRelayOptions) {
     const base = opts.baseUrl
@@ -174,6 +206,39 @@ export class ClawLinkRelayService {
           .catch((err: unknown) => {
             logDebug(`[clawlink-relay] remote.task dispatch failed: ${String(err)}`);
           });
+        break;
+      }
+
+      case "task.assign":
+      case "task.broadcast": {
+        const taskRecord =
+          msg.task && typeof msg.task === "object" ? (msg.task as Record<string, unknown>) : null;
+        const title = typeof taskRecord?.title === "string" ? taskRecord.title.trim() : "";
+        const description =
+          typeof taskRecord?.description === "string" ? taskRecord.description.trim() : "";
+        const executionId =
+          typeof msg.executionId === "number" && Number.isFinite(msg.executionId)
+            ? msg.executionId
+            : undefined;
+        const taskId =
+          typeof msg.taskId === "number" && Number.isFinite(msg.taskId) ? msg.taskId : undefined;
+
+        if (!title && !description) {
+          logWarn(`[clawlink] received ${type} without task content`);
+          break;
+        }
+
+        logWarn(
+          `[clawlink] received ${type}${taskId != null ? ` task=${taskId}` : ""}${executionId != null ? ` execution=${executionId}` : ""}`,
+        );
+
+        this.dispatchTaskFromRelay({
+          sourceType: type,
+          title: title || "Assigned task",
+          description: description || undefined,
+          executionId,
+          taskId,
+        });
         break;
       }
 

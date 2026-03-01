@@ -32,7 +32,7 @@ Reports without reproduction steps, demonstrated impact, and remediation advice 
 
 ## Security & Trust
 
-**Jamieson O'Reilly** ([@theonejvo](https://twitter.com/theonejvo)) is Security & Trust at CoderClaw. Jamieson is the founder of [Dvuln](https://dvuln.com) and brings extensive experience in offensive security, penetration testing, and security program development.
+**Sean Hogg** is Security & Trust at CoderClaw and leads threat modeling, secure architecture, and coordinated vulnerability response across the project.
 
 ## Bug Bounties
 
