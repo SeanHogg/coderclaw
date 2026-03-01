@@ -241,14 +241,15 @@ export async function startGatewayServer(
   initSubagentRegistry();
 
   // Load custom agent roles from .coderClaw/agents if present
+  const projectRoot = process.cwd();
   try {
-    const projectRoot = process.cwd();
     const customRoles = await loadCustomAgentRoles(projectRoot);
     registerCustomRoles(customRoles);
-    // Clear any previously registered custom roles on gateway start to avoid stale state
-    // (if the gateway is restarted in the same process)
+    if (customRoles.length > 0) {
+      log.info(`Loaded ${customRoles.length} custom agent role(s) from .coderClaw/agents`);
+    }
   } catch (err) {
-    log.warn(`Failed to load custom agent roles from ${projectRoot}: ${err}`);
+    log.warn(`Failed to load custom agent roles from ${projectRoot}: ${String(err)}`);
   }
 
   const defaultAgentId = resolveDefaultAgentId(cfgAtStart);

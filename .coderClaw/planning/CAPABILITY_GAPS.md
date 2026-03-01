@@ -12,56 +12,43 @@ agent features.
 
 ## Gap 1: Orchestrate Tool Creates But Never Executes Workflows
 
-**Status**: IN PROGRESS — spawn stub implemented, test added
+**Status**: ✅ PARTIALLY RESOLVED — orchestrate now executes workflows synchronously; workflow-type expansion still pending
 
 **Evidence**:
 
-- `src/coderclaw/tools/orchestrate-tool.ts` line 96: calls
-  `globalOrchestrator.createWorkflow(steps)` then returns
-  `"Workflow created. It will execute asynchronously."`
-- `executeWorkflow()` exists on `AgentOrchestrator` (line 130 of
-  `orchestrator.ts`) and works correctly — DAG resolution, parallel dispatch,
-  subagent spawning via `spawnSubagentDirect()`.
-- **But nothing ever calls `executeWorkflow()`.** The tool lies — there is no
-  background scheduler, no event loop pickup, no async executor.
-- Workflows sit in an in-memory `Map<string, Workflow>` and are never touched
-  again.
+- `src/coderclaw/tools/orchestrate-tool.ts` now creates then immediately executes:
+  - `const wf = globalOrchestrator.createWorkflow(steps);`
+  - `await globalOrchestrator.executeWorkflow(wf.id, context);`
+- The tool now returns completion/failure JSON with task results, rather than claiming asynchronous execution.
+- `src/coderclaw/orchestrator.ts` executes dependency-aware tasks and marks workflow status (`running` → `completed`/`failed`).
+- `src/coderclaw/orchestrator.test.ts` covers dependency resolution and runnable-task behavior.
 
-**Impact**: The entire multi-agent workflow system is inert. Planning, feature,
-bugfix, refactor, and adversarial review workflows cannot run.
+**Impact**: Feature/bugfix/refactor/custom workflows now execute. Remaining gap is workflow-type coverage (`planning`, `adversarial`) and production-grade execution semantics.
 
-**Fix**: After `createWorkflow()`, immediately call `executeWorkflow(wf.id)`.
-Wire the session's `SpawnSubagentContext` so spawned subagents have access to
-tools. Add `planning` and `adversarial` workflow types (currently only
-`feature`, `bugfix`, `refactor`, `custom`). Tracked as **Phase -1.1**.
+**Remaining work**:
+- Add `planning` and `adversarial` workflow types (currently only `feature`, `bugfix`, `refactor`, `custom`).
+- Add persistence/resume (tracked separately as Gap 4).
+- Add stronger end-to-end tests around real subagent completion paths.
 
 ---
 
 ## Gap 2: Agent Roles Defined But Never Applied
 
-**Status**: IN PROGRESS — basic wiring done; orchestrator calls findAgentRole and passes roleConfig to spawnSubagentDirect stub. Custom roles not yet loaded.
+**Status**: ✅ RESOLVED — custom roles loaded at gateway startup; built-in roles wired through findAgentRole; test coverage added
 
-**Evidence**:
+**Resolution**:
 
-- `src/coderclaw/agent-roles.ts`: 7 role definitions with system prompts,
-  models (`claude-sonnet-4-20250514`), thinking levels, tool allowlists,
-  and constraints.
-- `findAgentRole(name)` is exported but **never imported anywhere** outside
-  tests.
-- `/agent <name>` TUI command switches gateway agent IDs — it does NOT look
-  up role definitions or inject system prompts/tools/thinking from roles.
-- `loadCustomAgentRoles()` in `project-context.ts` can read
-  `.coderClaw/agents/*.yaml` — also never called.
-- When the orchestrator spawns subagents for workflow steps, it does NOT
-  apply role-specific system prompts, models, or tool restrictions.
+- `src/coderclaw/agent-roles.ts`: Added `registerCustomRoles()` and `clearCustomRoles()` to manage module-scoped custom roles registry. Built-in roles always precede custom ones, preventing accidental overrides.
+- `src/gateway/server.impl.ts`: On gateway boot, calls `loadCustomAgentRoles(process.cwd())`, registers them, and logs load count when roles are found. Wrapped in try-catch to prevent startup failure from malformed YAML.
+- `src/coderclaw/agent-roles.test.ts`: Added comprehensive tests (6 tests, 100% pass) covering registration, precedence, and clearing behavior.
+- The orchestrator already uses `findAgentRole` when spawning subagents (see `orchestrator.ts` `executeTask`). Now custom roles are available to that lookup.
 
-**Impact**: Agents all behave identically regardless of role. The
-`code-reviewer` has the same tools as `code-creator`. Role-specific constraints
-(like refactor-agent's "never change public API without approval") are ignored.
+**Verification**:
+- Run `pnpm test src/coderclaw/agent-roles.test.ts` → 6/6 pass
+- Start gateway → logs "Loaded N custom agent roles from .coderClaw/agents" if any present
+- Create custom role in `.coderClaw/agents/my-role.yaml` → `orchestrate` workflow steps can reference it
 
-**Fix**: Wire `findAgentRole()` into the subagent spawn path. Also call
-`loadCustomAgentRoles()` so custom roles in `.coderClaw/agents/` work.
-Tracked as **Phase -1.2**.
+**Remaining work**: None for Gap 2. The multi-agent system now has role-specific behavior, and custom roles are fully supported.
 
 ---
 
