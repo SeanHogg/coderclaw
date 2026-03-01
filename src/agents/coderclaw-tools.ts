@@ -1,6 +1,7 @@
 import {
   codeAnalysisTool,
   projectKnowledgeTool,
+  saveSessionHandoffTool,
   createOrchestrateTool,
   workflowStatusTool,
   gitHistoryTool,
@@ -167,6 +168,7 @@ export function createCoderClawTools(options?: {
     ...(imageTool ? [imageTool] : []),
     codeAnalysisTool,
     projectKnowledgeTool,
+    saveSessionHandoffTool,
     createOrchestrateTool({
       agentSessionKey: options?.agentSessionKey,
       agentChannel: options?.agentChannel,

@@ -73,45 +73,98 @@ undefined`. No warning is emitted and the subagent spawns without a system
 
 ## Gap 3: Session Handoff Is Dead Code
 
-**Status**: FACADE — fully implemented, zero callers
+**Status**: ✅ RESOLVED — `save_session_handoff` tool wired; handoff loaded on session start; `/handoff` TUI command added
 
-**Evidence**:
+**Resolution (2026-03-01)**:
 
-- `project-context.ts` lines 291-349: `saveSessionHandoff()`,
-  `loadLatestSessionHandoff()`, `listSessionHandoffs()` — complete
-  implementations with YAML serialization, sorted file listing, error handling.
-- `SessionHandoff` type in `types.ts` lines 191-211: well-defined with
-  `sessionId`, `timestamp`, `summary`, `decisions`, `nextSteps`,
-  `openQuestions`, `artifacts`, `context`.
-- `grep -r "saveSessionHandoff\|loadLatestSessionHandoff" --include="*.ts"`
-  returns ONLY `project-context.ts` itself. **Zero imports. Zero callers.**
-- No agent session startup code loads prior handoffs.
-- No session teardown code saves handoffs.
+- **`save_session_handoff` tool** created at `src/coderclaw/tools/save-session-handoff-tool.ts`:
+  - Accepts `projectRoot`, `sessionId?`, `summary`, `decisions?`, `nextSteps?`,
+    `openQuestions?`, `artifacts?`
+  - Calls `saveSessionHandoff()` from `project-context.ts`, writing a YAML file
+    to `.coderClaw/sessions/<sessionId>.yaml`
+  - Returns path + confirmation so the agent can confirm success
+  - Registered in `createCoderClawTools()` (`src/agents/coderclaw-tools.ts`) and
+    exported from `src/coderclaw/tools/index.ts`
+- **Handoff loaded on session start** (`src/tui/tui-session-actions.ts`):
+  - `setSession()` now calls `loadLatestSessionHandoff(process.cwd())` after
+    `loadHistory()` completes
+  - If a handoff exists, a system message is added to the chat log:
+    `"Resuming from session <id> (<date>)\nSummary: ...\nDecisions: ...\nNext steps: ...\nOpen questions: ..."`
+  - Silent no-op when `.coderClaw/` does not exist
+- **`/handoff` TUI command** (`src/tui/tui-command-handlers.ts`, `commands.ts`):
+  - Sends a structured message to the connected agent asking it to call
+    `save_session_handoff` with a summary of the session
+  - Errors gracefully if gateway is disconnected
 
-**Impact**: Sessions have zero continuity. Every new session starts from
-scratch. An agent cannot "resume from where we left off." Multi-session
-roadmap work requires the human to manually re-explain context each time.
+**Verification**:
 
-**Fix**: Save handoff on session end, load on session start, expose `/handoff`
-TUI command. Tracked as **Phase -1.3**.
+1. Do work in a session on an initialized coderClaw project
+2. Type `/handoff` — agent calls `save_session_handoff`; confirm `.coderClaw/sessions/*.yaml` written
+3. Type `/new` to reset the session
+4. A system message "Resuming from session …" appears with the summary
+5. Project without `.coderClaw/` — no message shown, no error
+
+**Remaining gaps**:
+
+- **No automatic save on exit**: The handoff is agent-triggered (via `/handoff`
+  or agent self-initiative). Automatic save when the TUI exits or `/new` is
+  issued without calling `/handoff` first is still missing.
+- **No `project_knowledge handoff` query**: The `project_knowledge` tool does
+  not yet expose the handoff YAML files. Agents can only read handoffs via
+  the filesystem tool.
 
 ---
 
 ## Gap 4: Workflow State Is Ephemeral
 
-**Status**: MISSING — no persistence at all
+**Status**: ✅ RESOLVED — checkpoints written after every task state change; incomplete workflows restored at gateway startup; `resumeWorkflow()` added
 
-**Evidence**:
+**Resolution (2026-03-01)**:
 
-- `orchestrator.ts`: `private workflows = new Map<string, Workflow>()`
-- Process restart = total state loss. No disk writes, no checkpoints.
-- No `resumeWorkflow()` function exists.
+- **`PersistedWorkflow` / `PersistedTask` types** added to `project-context.ts`:
+  plain objects with ISO-string dates so YAML serialization is lossless.
+- **`saveWorkflowState(projectRoot, workflow)`**: writes
+  `.coderClaw/sessions/workflow-<id>.yaml` after every task status change.
+- **`loadWorkflowState(projectRoot, id)`**: reads a single workflow YAML.
+- **`listIncompleteWorkflowIds(projectRoot)`**: scans `sessions/` and returns
+  IDs of workflows still in `pending` or `running` state.
+- **`AgentOrchestrator.setProjectRoot(root)`**: enables persistence. Call once
+  at gateway startup.
+- **`AgentOrchestrator.persistWorkflow(workflow)`** (private): serializes the
+  full workflow + `taskResults` map to YAML. Fire-and-forget; errors are logged,
+  not thrown. Called in `createWorkflow`, `executeTask` (on status change),
+  and after `executeWorkflow` completes/fails.
+- **`AgentOrchestrator.hydrateWorkflow(persisted)`** (private): reconstructs
+  a live `Workflow` from a `PersistedWorkflow`. Tasks that were `running` at
+  crash time are reset to `pending` so they re-execute on resume.
+- **`AgentOrchestrator.loadPersistedWorkflows()`**: loads all incomplete
+  workflows from disk into the in-memory map. Returns their IDs.
+- **`AgentOrchestrator.resumeWorkflow(id, context)`**: loads from disk if
+  not already in memory, then delegates to `executeWorkflow` (which skips
+  already-completed tasks via its `executedTasks` set).
+- **Gateway startup** (`server-startup.ts`): `globalOrchestrator.setProjectRoot()`
+  and `loadPersistedWorkflows()` called early in `startGatewaySidecars`. A
+  warning is logged for each incomplete workflow found (e.g. "1 incomplete
+  workflow(s) restored: <id>").
 
-**Impact**: Long-running workflows (multi-step feature implementation) cannot
-survive TUI restart, network disconnection, or even an accidental Ctrl+C.
+**Verification**:
 
-**Fix**: Serialize workflow state to `.coderClaw/sessions/workflow-{id}.yaml`
-after each step. Add resume logic. Tracked as **Phase -1.4**.
+1. Start a workflow via `orchestrate` tool (multi-step feature)
+2. Kill the gateway process mid-step
+3. Restart → logs show "incomplete workflow(s) restored: <id>"
+4. `workflow_status` tool returns the workflow as `pending` (tasks reset from
+   `running` to `pending`)
+5. Re-run `orchestrate` with the same workflowId to resume
+6. `.coderClaw/sessions/workflow-<id>.yaml` is updated after every step
+
+**Remaining gaps**:
+
+- **No auto-resume prompt**: The TUI does not yet show "Resume incomplete
+  workflow? [Y/n]" on session start. The log message + `workflow_status` tool
+  is the current mechanism.
+- **Result quality**: Completed task output is stored as
+  `"Task <id> completed successfully"` — a placeholder. Real output from the
+  subagent is not yet captured and injected into dependent task inputs.
 
 ---
 
@@ -257,18 +310,16 @@ database — they can't collaborate.
 
 ## Priority Order
 
-| Priority | Gap                           | Status  | Why next                                                                        |
-| -------- | ----------------------------- | ------- | ------------------------------------------------------------------------------- |
-| ✅ done  | **-1.1** Wire executeWorkflow | PARTIAL | Execution works; planning/adversarial types still unwired                       |
-| ✅ done  | **-1.2** Wire agent roles     | DONE    | Infrastructure complete; no `.coderClaw/agents/` roles yet                      |
-| ✅ done  | **-1.5** Knowledge loop       | PARTIAL | Activity log + sync wired; semantic memory and auto-architecture update pending |
-| 1        | **-1.3** Wire session handoff | MISSING | Multi-session work needs continuity                                             |
-| 2        | **-1.4** Workflow persistence | MISSING | Nice-to-have once long workflows are reliable                                   |
-| 3        | **-1.6b** Claw-to-claw mesh   | PARTIAL | Relay works (single-claw chat ✅); claw→claw still missing                      |
+| Priority | Gap                           | Status   | Why next                                                                        |
+| -------- | ----------------------------- | -------- | ------------------------------------------------------------------------------- |
+| ✅ done  | **-1.1** Wire executeWorkflow | PARTIAL  | Execution works; planning/adversarial types still unwired                       |
+| ✅ done  | **-1.2** Wire agent roles     | DONE     | Infrastructure complete; no `.coderClaw/agents/` roles yet                      |
+| ✅ done  | **-1.5** Knowledge loop       | PARTIAL  | Activity log + sync wired; semantic memory and auto-architecture update pending |
+| ✅ done  | **-1.3** Wire session handoff | RESOLVED | Tool + TUI load + /handoff command wired; auto-save on exit still pending       |
+| ✅ done  | **-1.4** Workflow persistence | RESOLVED | Checkpoints after every task; restore + resume at gateway restart               |
+| 1        | **-1.6b** Claw-to-claw mesh   | PARTIAL  | Relay works (single-claw chat ✅); claw→claw still missing                      |
 
-Item 1 is **blocking**: coderClaw cannot self-improve across sessions without session handoff.
-Items 2-3 are **enabling**: they improve reliability and scale but aren't required
-for the single-claw self-bootstrapping loop.
+Item 1 is the remaining **enabling** gap: distributed work across claws.
 
 ---
 
@@ -281,10 +332,11 @@ After each gap is fixed, verify:
 - [ ] **-1.2**: Spawned subagents use role-specific system prompts and tool sets.
       `code-reviewer` cannot use `create` tool. `refactor-agent` has explicit
       constraint about public APIs.
-- [ ] **-1.3**: Start session → do work → exit. Start new session → see
-      "Resuming from: [summary]" → prior decisions and next steps in context.
-- [ ] **-1.4**: Start workflow → kill process mid-step → restart → see
-      "Incomplete workflow found. Resume? [Y/n]" → continues from last checkpoint.
+- [x] **-1.3** (2026-03-01): `/handoff` → agent calls `save_session_handoff` → YAML saved.
+      `/new` → "Resuming from session … Summary: …" shown. Decisions + next steps in context.
+- [x] **-1.4** (2026-03-01): Workflow YAML written after every task. Gateway restart
+      logs "N incomplete workflow(s) restored". `workflow_status` shows pending tasks.
+      `resumeWorkflow()` skips completed tasks and re-executes the rest.
 - [x] **-1.5** (2026-03-01, partial): Complete a task → `.coderClaw/memory/YYYY-MM-DD.md`
       gets a timestamped entry with files touched and tools used. CoderClawLink
       syncs the memory file. `project_knowledge memory` returns recent entries.

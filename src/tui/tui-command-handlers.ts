@@ -749,6 +749,24 @@ export function createCommandHandlers(context: CommandHandlerContext) {
           );
         }
         break;
+      case "handoff":
+        if (!state.isConnected) {
+          chatLog.addSystem("Gateway is disconnected. Reconnect to save a session handoff.");
+          break;
+        }
+        await sendMessage(
+          [
+            "Please save a session handoff document for this session using the save_session_handoff tool.",
+            `Use projectRoot: ${process.cwd()}`,
+            "Include:",
+            "- summary: a concise one-paragraph summary of what was accomplished",
+            "- decisions: key architectural or design decisions made",
+            "- nextSteps: concrete next steps for the following session",
+            "- openQuestions: any unresolved questions or blockers",
+            "- artifacts: files or documents created or significantly modified",
+          ].join("\n"),
+        );
+        break;
       default:
         await sendMessage(raw);
         break;

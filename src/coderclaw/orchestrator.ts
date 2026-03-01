@@ -4,7 +4,15 @@
 
 import crypto from "node:crypto";
 import { spawnSubagentDirect, type SpawnSubagentContext } from "../agents/subagent-spawn.js";
+import { logDebug } from "../logger.js";
 import { findAgentRole } from "./agent-roles.js";
+import {
+  saveWorkflowState,
+  loadWorkflowState,
+  listIncompleteWorkflowIds,
+  type PersistedWorkflow,
+  type PersistedTask,
+} from "./project-context.js";
 
 export type { SpawnSubagentContext } from "../agents/subagent-spawn.js";
 
@@ -46,6 +54,12 @@ export type Workflow = {
 export class AgentOrchestrator {
   private workflows = new Map<string, Workflow>();
   private taskResults = new Map<string, string>();
+  private projectRoot: string | null = null;
+
+  /** Enable disk persistence for workflows. Call at gateway startup. */
+  setProjectRoot(root: string): void {
+    this.projectRoot = root;
+  }
 
   /**
    * Create a new workflow
@@ -112,6 +126,7 @@ export class AgentOrchestrator {
     }
 
     this.workflows.set(id, workflow);
+    this.persistWorkflow(workflow);
     return workflow;
   }
 
@@ -178,6 +193,7 @@ export class AgentOrchestrator {
     } else {
       workflow.status = "completed";
     }
+    this.persistWorkflow(workflow);
 
     return results;
   }
@@ -192,6 +208,7 @@ export class AgentOrchestrator {
   ): Promise<string> {
     task.status = "running";
     task.startedAt = new Date();
+    this.persistWorkflow(workflow);
 
     // Build task input with dependency results
     let taskInput = task.input;
@@ -226,12 +243,14 @@ export class AgentOrchestrator {
       const output = `Task ${task.id} completed successfully`;
       task.output = output;
       this.taskResults.set(task.id, output);
+      this.persistWorkflow(workflow);
 
       return output;
     } else {
       task.status = "failed";
       task.error = result.error || "Failed to spawn subagent";
       task.completedAt = new Date();
+      this.persistWorkflow(workflow);
       throw new Error(task.error);
     }
   }
@@ -294,6 +313,141 @@ export class AgentOrchestrator {
    */
   getAllWorkflows(): Workflow[] {
     return Array.from(this.workflows.values());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Persistence
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Serialize and write a workflow to .coderClaw/sessions/workflow-<id>.yaml.
+   * No-op when projectRoot has not been set.
+   */
+  private persistWorkflow(workflow: Workflow): void {
+    if (!this.projectRoot) {
+      return;
+    }
+    const serialized: PersistedWorkflow = {
+      id: workflow.id,
+      status: workflow.status,
+      createdAt: workflow.createdAt.toISOString(),
+      steps: workflow.steps,
+      tasks: Object.fromEntries(
+        Array.from(workflow.tasks.entries()).map(([id, task]) => [
+          id,
+          {
+            id: task.id,
+            description: task.description,
+            agentRole: task.agentRole,
+            status: task.status,
+            input: task.input,
+            output: task.output,
+            error: task.error,
+            childSessionKey: task.childSessionKey,
+            createdAt: task.createdAt.toISOString(),
+            startedAt: task.startedAt?.toISOString(),
+            completedAt: task.completedAt?.toISOString(),
+            dependencies: task.dependencies,
+            dependents: task.dependents,
+          } satisfies PersistedTask,
+        ]),
+      ),
+      taskResults: Object.fromEntries(this.taskResults.entries()),
+    };
+    // Fire-and-forget — persistence failures are logged, not thrown
+    saveWorkflowState(this.projectRoot, serialized).catch((err) => {
+      logDebug(`[orchestrator] failed to persist workflow ${workflow.id}: ${String(err)}`);
+    });
+  }
+
+  /**
+   * Deserialize a PersistedWorkflow back into a live Workflow, re-registering
+   * it in the in-memory map. Any tasks that were "running" at crash time are
+   * reset to "pending" so they can be retried via resumeWorkflow().
+   */
+  private hydrateWorkflow(persisted: PersistedWorkflow): Workflow {
+    const tasks = new Map<string, Task>();
+    for (const [id, pt] of Object.entries(persisted.tasks)) {
+      tasks.set(id, {
+        id: pt.id,
+        description: pt.description,
+        agentRole: pt.agentRole,
+        // Tasks that were in-flight when the process died should be retried
+        status: pt.status === "running" ? "pending" : (pt.status as TaskStatus),
+        input: pt.input,
+        output: pt.output,
+        error: pt.error,
+        childSessionKey: pt.childSessionKey,
+        createdAt: new Date(pt.createdAt),
+        startedAt: pt.startedAt ? new Date(pt.startedAt) : undefined,
+        completedAt: pt.completedAt ? new Date(pt.completedAt) : undefined,
+        dependencies: pt.dependencies,
+        dependents: pt.dependents,
+      });
+    }
+
+    const workflow: Workflow = {
+      id: persisted.id,
+      steps: persisted.steps,
+      tasks,
+      status: persisted.status === "running" ? "pending" : (persisted.status as TaskStatus),
+      createdAt: new Date(persisted.createdAt),
+    };
+
+    // Restore task results so dependency chains work correctly on resume
+    for (const [taskId, result] of Object.entries(persisted.taskResults ?? {})) {
+      this.taskResults.set(taskId, result);
+    }
+
+    this.workflows.set(workflow.id, workflow);
+    return workflow;
+  }
+
+  /**
+   * Load all incomplete workflows from disk into the in-memory map.
+   * Call once at gateway startup so agents can resume or inspect them.
+   * Returns the IDs of any incomplete workflows found.
+   */
+  async loadPersistedWorkflows(): Promise<string[]> {
+    if (!this.projectRoot) {
+      return [];
+    }
+    try {
+      const ids = await listIncompleteWorkflowIds(this.projectRoot);
+      for (const id of ids) {
+        if (this.workflows.has(id)) {
+          continue; // already in memory
+        }
+        const persisted = await loadWorkflowState(this.projectRoot, id);
+        if (persisted) {
+          this.hydrateWorkflow(persisted);
+          logDebug(`[orchestrator] restored incomplete workflow ${id}`);
+        }
+      }
+      return ids;
+    } catch (err) {
+      logDebug(`[orchestrator] failed to load persisted workflows: ${String(err)}`);
+      return [];
+    }
+  }
+
+  /**
+   * Resume an incomplete workflow that was previously persisted to disk.
+   * Already-completed tasks are skipped; pending/reset tasks are re-executed.
+   */
+  async resumeWorkflow(
+    workflowId: string,
+    context: SpawnSubagentContext,
+  ): Promise<Map<string, string>> {
+    // Ensure the workflow is in memory (hydrate from disk if needed)
+    if (!this.workflows.has(workflowId) && this.projectRoot) {
+      const persisted = await loadWorkflowState(this.projectRoot, workflowId);
+      if (!persisted) {
+        throw new Error(`Workflow ${workflowId} not found on disk`);
+      }
+      this.hydrateWorkflow(persisted);
+    }
+    return this.executeWorkflow(workflowId, context);
   }
 }
 

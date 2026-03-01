@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026.3.1-beta.2
+
+### Changes
+
+- Session handoff: `save_session_handoff` tool added — agents can call it with a summary, decisions, next steps, open questions, and artifacts to write `.coderClaw/sessions/<id>.yaml`. Registered in `createCoderClawTools()`.
+- Session handoff: `setSession()` in the TUI now loads the latest handoff from `.coderClaw/sessions/` after history loads and displays "Resuming from session …" with summary, decisions, and next steps. Silent no-op when `.coderClaw/` does not exist.
+- Session handoff: `/handoff` slash command added — prompts the connected agent to call `save_session_handoff` and record a session summary.
+- Workflow persistence: `saveWorkflowState` / `loadWorkflowState` / `listIncompleteWorkflowIds` added to `project-context.ts`. Workflows are serialized to `.coderClaw/sessions/workflow-<id>.yaml` after every task state change.
+- Workflow persistence: `AgentOrchestrator.persistWorkflow()`, `hydrateWorkflow()`, `loadPersistedWorkflows()`, and `resumeWorkflow()` added. Incomplete workflows are restored from disk at gateway startup and logged.
+- Workflow persistence: Gateway startup (`startGatewaySidecars`) calls `globalOrchestrator.setProjectRoot()` and `loadPersistedWorkflows()` early in the boot sequence.
+
+Docs: https://docs.coderclaw.ai
+
 ## 2026.3.1-beta.1
 
 ### Changes

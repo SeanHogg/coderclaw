@@ -123,6 +123,10 @@ export function getSlashCommands(options: SlashCommandOptions = {}): SlashComman
     { name: "daemon", description: "Alias for /gateway" },
     { name: "logs", description: "Show recent gateway log lines" },
     { name: "init", description: "Initialize coderClaw project in workspace" },
+    {
+      name: "handoff",
+      description: "Ask the agent to save a session handoff for the next session",
+    },
     { name: "exit", description: "Exit the TUI" },
     { name: "quit", description: "Exit the TUI" },
     { name: "setup", description: "Run the setup/onboarding wizard" },
@@ -170,6 +174,7 @@ export function helpText(options: SlashCommandOptions = {}): string {
     "/daemon <status|start|stop|restart>",
     "/logs [count]",
     "/init",
+    "/handoff",
     "/exit",
     "/setup or /onboard",
   ].join("\n");

@@ -1,4 +1,5 @@
 import type { TUI } from "@mariozechner/pi-tui";
+import { loadLatestSessionHandoff } from "../coderclaw/project-context.js";
 import type { SessionsPatchResult } from "../gateway/protocol/index.js";
 import {
   normalizeAgentId,
@@ -379,6 +380,29 @@ export function createSessionActions(context: SessionActionContext) {
     updateHeader();
     updateFooter();
     await loadHistory();
+
+    // Load the latest session handoff and surface it as context for the new session.
+    try {
+      const handoff = await loadLatestSessionHandoff(process.cwd());
+      if (handoff) {
+        const lines: string[] = [
+          `Resuming from session ${handoff.sessionId.slice(0, 8)} (${handoff.timestamp.slice(0, 10)})`,
+          `Summary: ${handoff.summary}`,
+        ];
+        if (handoff.decisions.length > 0) {
+          lines.push(`Decisions: ${handoff.decisions.map((d) => `• ${d}`).join("  ")}`);
+        }
+        if (handoff.nextSteps.length > 0) {
+          lines.push(`Next steps: ${handoff.nextSteps.map((s) => `• ${s}`).join("  ")}`);
+        }
+        if (handoff.openQuestions.length > 0) {
+          lines.push(`Open questions: ${handoff.openQuestions.map((q) => `• ${q}`).join("  ")}`);
+        }
+        chatLog.addSystem(lines.join("\n"));
+      }
+    } catch {
+      // Silent — .coderClaw may not exist in this project yet
+    }
   };
 
   const abortActive = async () => {

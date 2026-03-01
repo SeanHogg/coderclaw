@@ -8,6 +8,7 @@ import {
 import { resolveAgentSessionDirs } from "../agents/session-dirs.js";
 import { cleanStaleLockFiles } from "../agents/session-write-lock.js";
 import type { CliDeps } from "../cli/deps.js";
+import { globalOrchestrator } from "../coderclaw/orchestrator.js";
 import { loadProjectContext } from "../coderclaw/project-context.js";
 import type { loadConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
@@ -62,6 +63,16 @@ export async function startGatewaySidecars(params: {
     }
   } catch (err) {
     params.log.warn(`session lock cleanup failed on startup: ${String(err)}`);
+  }
+
+  // Enable workflow persistence — sets .coderClaw/ as the storage root and
+  // re-hydrates any incomplete workflows that survived a prior crash/restart.
+  globalOrchestrator.setProjectRoot(params.defaultWorkspaceDir);
+  const incompleteWorkflows = await globalOrchestrator.loadPersistedWorkflows();
+  if (incompleteWorkflows.length > 0) {
+    params.log.warn(
+      `[orchestrator] ${incompleteWorkflows.length} incomplete workflow(s) restored: ${incompleteWorkflows.join(", ")}`,
+    );
   }
 
   // Start CoderClaw browser control server (unless disabled via config).
