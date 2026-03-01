@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoderClawConfig } from "../config/config.js";
 import { getMemorySearchManager, type MemoryIndexManager } from "./index.js";
 import { createOpenAIEmbeddingProviderMock } from "./test-embeddings-mock.js";
+import { hasNodeSqliteSupport } from "./test-sqlite-support.js";
 
 const embedBatch = vi.fn(async () => []);
 const embedQuery = vi.fn(async () => [0.2, 0.2, 0.2]);
@@ -17,7 +18,9 @@ vi.mock("./embeddings.js", () => ({
     }),
 }));
 
-describe("memory search async sync", () => {
+const describeIfSqlite = hasNodeSqliteSupport ? describe : describe.skip;
+
+describeIfSqlite("memory search async sync", () => {
   let workspaceDir: string;
   let indexPath: string;
   let manager: MemoryIndexManager | null = null;

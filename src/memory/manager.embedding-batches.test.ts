@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { installEmbeddingManagerFixture } from "./embedding-manager.test-harness.js";
+import { hasNodeSqliteSupport } from "./test-sqlite-support.js";
 
 const fx = installEmbeddingManagerFixture({
   fixturePrefix: "coderclaw-mem-",
@@ -26,7 +27,9 @@ const fx = installEmbeddingManagerFixture({
 });
 const { embedBatch } = fx;
 
-describe("memory embedding batches", () => {
+const describeIfSqlite = hasNodeSqliteSupport ? describe : describe.skip;
+
+describeIfSqlite("memory embedding batches", () => {
   it("splits large files across multiple embedding batches", async () => {
     const memoryDir = fx.getMemoryDir();
     const managerLarge = fx.getManagerLarge();

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoderClawConfig } from "../config/config.js";
 import { getMemorySearchManager, type MemoryIndexManager } from "./index.js";
 import { buildFileEntry } from "./internal.js";
+import { hasNodeSqliteSupport } from "./test-sqlite-support.js";
 
 vi.mock("./embeddings.js", () => {
   return {
@@ -20,7 +21,9 @@ vi.mock("./embeddings.js", () => {
   };
 });
 
-describe("memory vector dedupe", () => {
+const describeIfSqlite = hasNodeSqliteSupport ? describe : describe.skip;
+
+describeIfSqlite("memory vector dedupe", () => {
   let workspaceDir: string;
   let indexPath: string;
   let manager: MemoryIndexManager | null = null;

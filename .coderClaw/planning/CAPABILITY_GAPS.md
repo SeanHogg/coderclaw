@@ -27,7 +27,11 @@ agent features.
 
 **Remaining work**:
 
-- Add `planning` and `adversarial` workflow types (currently only `feature`, `bugfix`, `refactor`, `custom`).
+- Wire `planning` and `adversarial` workflow types into the tool. Both
+  implementations exist in `src/coderclaw/orchestrator-enhanced.ts`
+  (`createPlanningWorkflow`, `createAdversarialReviewWorkflow`) but the
+  `orchestrate-tool.ts` switch only handles `feature | bugfix | refactor |
+custom`. The enhanced orchestrator is never imported or called.
 - Add persistence/resume (tracked separately as Gap 4).
 - Add stronger end-to-end tests around real subagent completion paths.
 
@@ -50,7 +54,15 @@ agent features.
 - Start gateway → logs "Loaded N custom agent roles from .coderClaw/agents" if any present
 - Create custom role in `.coderClaw/agents/my-role.yaml` → `orchestrate` workflow steps can reference it
 
-**Remaining work**: None for Gap 2. The multi-agent system now has role-specific behavior, and custom roles are fully supported.
+**Remaining work**: Infrastructure is complete. Two usage-level gaps remain:
+
+- **Silent failure**: When `findAgentRole(task.agentRole)` returns `null`
+  (unknown role name), `spawnSubagentDirect` is called with `roleConfig:
+undefined`. No warning is emitted and the subagent spawns without a system
+  prompt. Add validation in `executeTask` to warn/fail on missing roles.
+- **No custom roles in this project**: `.coderClaw/agents/` directory does not
+  exist — `loadCustomAgentRoles` loads zero files. Create role YAMLs to
+  actually exercise the system.
 
 **Verification snapshot (2026-02-28):**
 
@@ -105,28 +117,56 @@ after each step. Add resume logic. Tracked as **Phase -1.4**.
 
 ## Gap 5: No Post-Task Knowledge Update
 
-**Status**: MISSING — no automatic knowledge loop
+**Status**: ✅ PARTIALLY RESOLVED — activity log written after every run; CoderClawLink synced automatically; `project_knowledge memory` query wired
 
-**Evidence**:
+**Resolution (2026-03-01)**:
 
-- `.coderClaw/` is populated once by `coderclaw init` (interactive wizard).
-- `architecture.md` is a skeleton created at init time, never refreshed.
-- `.coderClaw/memory/` directory is created but **never indexed** by the
-  memory system — only workspace-root `memory/` and `MEMORY.md` are watched
-  by `manager-sync-ops.ts`.
-- The **memory flush** hook (`memory-flush.ts`) fires pre-compaction only —
-  it writes to workspace-root `memory/YYYY-MM-DD.md`, not `.coderClaw/memory/`.
-- `updateProjectContextFields()` exists but is only called during the
-  interactive setup wizard, never after task completion.
-- No post-task hook in the agent lifecycle.
+- **`appendKnowledgeMemory()`** added to `src/coderclaw/project-context.ts`:
+  appends timestamped entries to `.coderClaw/memory/YYYY-MM-DD.md`, creating
+  the file and directory as needed.
+- **`syncCoderClawDirectory(SyncCoderClawDirParams)`** extracted from
+  `src/infra/clawlink-directory-sync.ts` as a standalone reusable export (the
+  startup wrapper now delegates to it). Allows sync at any time.
+- **`KnowledgeLoopService`** created at `src/infra/knowledge-loop.ts`:
+  - Subscribes to `onAgentEvent` (the same global bus used by the relay)
+  - Per run: accumulates tool events (`toolName`, `path`) to track
+    `filesCreated`, `filesEdited`, `toolNames`
+  - On `lifecycle.end` / `lifecycle.error`: writes a timestamped entry to
+    `.coderClaw/memory/YYYY-MM-DD.md` then calls `syncCoderClawDirectory()`
+    if `apiKey` + `clawId` are present
+  - Clean `stop()` via the `onAgentEvent` unsubscribe return value
+- **Wired into `startGatewaySidecars`** (`src/gateway/server-startup.ts`):
+  `KnowledgeLoopService` starts whenever `CODERCLAW_LINK_API_KEY` is set.
+  Sync is silently skipped when `clawId` is absent (API key without a
+  registered claw still gets local memory writes).
+- **`project_knowledge` tool** (`src/coderclaw/tools/project-knowledge-tool.ts`):
+  new `"memory"` query type reads the last 7 `.coderClaw/memory/*.md` files
+  and returns them joined with `---` separators. Also included in `"all"`.
 
-**Impact**: coderClaw cannot learn from its own work. After implementing a
-feature, the project context doesn't reflect the new modules. After discovering
-a bug pattern, no rule is added. The knowledge base is write-once, never
-updated.
+**Remaining gaps**:
 
-**Fix**: Add post-task hook, bridge `.coderClaw/memory/` to indexing, add
-`/knowledge update` command. Tracked as **Phase -1.5**.
+- **Activity log is structural, not semantic**: entries record which files
+  were touched and which tools ran, but not _what_ changed or _why_. An agent
+  reading the memory sees file lists, not architectural insight.
+- **`architecture.md` still never auto-updated**: `updateProjectContextFields()`
+  still only called during setup wizard. A post-task hook that refreshes
+  `architecture.md` after large feature additions is still missing.
+- **`.coderClaw/memory/` not indexed by the vector memory system**: the
+  `memory-core` / `memory-lancedb` extensions watch workspace-root `memory/`,
+  not `.coderClaw/memory/`. Semantic search across the knowledge log is not yet
+  available.
+- **No `/knowledge update` TUI command**: agents cannot manually trigger a
+  knowledge sync or annotate their own work.
+
+**Verification**:
+
+1. Start gateway with `CODERCLAW_LINK_API_KEY` set and `clawLink.instanceId` in
+   context.yaml
+2. Send a message that causes file edits
+3. After run completes → `.coderClaw/memory/YYYY-MM-DD.md` has a new `## [timestamp]`
+   entry listing edited files and tools used
+4. CoderClawLink → Claw panel → Directories shows updated memory file timestamp
+5. `project_knowledge memory` → returns recent entries
 
 ---
 
@@ -161,6 +201,11 @@ updated.
   reads `CODERCLAW_LINK_API_KEY` and `CODERCLAW_LINK_URL` from
   `~/.coderclaw/.env`; loads `clawLink.instanceId` from project context; starts
   `ClawLinkRelayService` if both are present. Returns handle for clean shutdown.
+- **`.coderClaw` directory sync** (`src/infra/clawlink-directory-sync.ts`):
+  on gateway startup, `syncCoderClawDirectoryOnStartup()` does a one-way HTTP
+  PUT of local `.coderClaw` files (up to 200 items, 512 KB/file) to
+  `PUT /api/claws/:id/directories/sync?key=<apiKey>`. The API side can now
+  serve the project context to the browser.
 - **Heartbeat API endpoint** (`coderClawLink /api/claws/:id/heartbeat` — NEW):
   `PATCH /:id/heartbeat?key=<apiKey>` updates `lastSeenAt`; API-key auth
   without requiring the full JWT flow.
@@ -184,7 +229,9 @@ updated.
   No `RemoteSubagentAdapter` or equivalent.
 - **No fleet discovery**: A claw cannot query which other claws are online or
   their capabilities. `coderclaw_instances` tracks registrations but has no
-  capability metadata or online-status query API.
+  capability metadata. `tenantRoutes.ts` already returns a `capabilitySummary`
+  field per claw — but `distributed` is hardcoded to `false` and no real
+  capability introspection exists.
 - **No claw-to-claw routes**: No `/api/claws/:id/forward/:targetId`. No
   concept of routing a task to a specific claw.
 - **No distributed task routing**: `ClawLinkTransportAdapter` is still a CRUD
@@ -210,17 +257,17 @@ database — they can't collaborate.
 
 ## Priority Order
 
-| Priority | Gap                           | Why first                                            |
-| -------- | ----------------------------- | ---------------------------------------------------- |
-| 1        | **-1.1** Wire executeWorkflow | Nothing works without this — it's the core engine    |
-| 2        | **-1.2** Wire agent roles     | Workflows need role-specific behavior to be useful   |
-| 3        | **-1.3** Wire session handoff | Multi-session work needs continuity                  |
-| 4        | **-1.5** Knowledge loop       | Agents need updated context to work effectively      |
-| 5        | **-1.4** Workflow persistence | Nice-to-have once workflows actually run             |
-| 6        | **-1.6b** Claw-to-claw mesh   | Relay works (single-claw chat ✅); claw→claw still missing |
+| Priority | Gap                           | Status  | Why next                                                                        |
+| -------- | ----------------------------- | ------- | ------------------------------------------------------------------------------- |
+| ✅ done  | **-1.1** Wire executeWorkflow | PARTIAL | Execution works; planning/adversarial types still unwired                       |
+| ✅ done  | **-1.2** Wire agent roles     | DONE    | Infrastructure complete; no `.coderClaw/agents/` roles yet                      |
+| ✅ done  | **-1.5** Knowledge loop       | PARTIAL | Activity log + sync wired; semantic memory and auto-architecture update pending |
+| 1        | **-1.3** Wire session handoff | MISSING | Multi-session work needs continuity                                             |
+| 2        | **-1.4** Workflow persistence | MISSING | Nice-to-have once long workflows are reliable                                   |
+| 3        | **-1.6b** Claw-to-claw mesh   | PARTIAL | Relay works (single-claw chat ✅); claw→claw still missing                      |
 
-Items 1-4 are **blocking**: coderClaw literally cannot self-improve without them.
-Items 5-6 are **enabling**: they improve reliability and scale but aren't required
+Item 1 is **blocking**: coderClaw cannot self-improve across sessions without session handoff.
+Items 2-3 are **enabling**: they improve reliability and scale but aren't required
 for the single-claw self-bootstrapping loop.
 
 ---
@@ -238,8 +285,10 @@ After each gap is fixed, verify:
       "Resuming from: [summary]" → prior decisions and next steps in context.
 - [ ] **-1.4**: Start workflow → kill process mid-step → restart → see
       "Incomplete workflow found. Resume? [Y/n]" → continues from last checkpoint.
-- [ ] **-1.5**: Complete a task that adds a new module → `architecture.md` is
-      updated → next agent session sees the new module in its context.
+- [x] **-1.5** (2026-03-01, partial): Complete a task → `.coderClaw/memory/YYYY-MM-DD.md`
+      gets a timestamped entry with files touched and tools used. CoderClawLink
+      syncs the memory file. `project_knowledge memory` returns recent entries.
+      _(Semantic auto-update of `architecture.md` still pending.)_
 - [x] **-1.6a** (2026-03-01): coderClaw connects to ClawRelayDO upstream WS on
       gateway start. `connectedAt` and `lastSeenAt` update correctly. Browser
       chat reaches local agent; agent responses stream back to browser.

@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CoderClawConfig } from "../config/config.js";
 import { getMemorySearchManager, type MemoryIndexManager } from "./index.js";
+import { hasNodeSqliteSupport } from "./test-sqlite-support.js";
 
 const { watchMock } = vi.hoisted(() => ({
   watchMock: vi.fn(() => ({
@@ -33,7 +34,9 @@ vi.mock("./embeddings.js", () => ({
   }),
 }));
 
-describe("memory watcher config", () => {
+const describeIfSqlite = hasNodeSqliteSupport ? describe : describe.skip;
+
+describeIfSqlite("memory watcher config", () => {
   let manager: MemoryIndexManager | null = null;
   let workspaceDir = "";
   let extraDir = "";

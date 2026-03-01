@@ -41,10 +41,13 @@ async function ensureProjectMapping(params: {
       }),
     });
 
-    await clawLinkFetch(`${params.serverUrl}/api/claws/${params.clawId}/projects/${upsert.project.id}`, {
-      method: "PUT",
-      token: params.tenantJwt,
-    });
+    await clawLinkFetch(
+      `${params.serverUrl}/api/claws/${params.clawId}/projects/${upsert.project.id}`,
+      {
+        method: "PUT",
+        token: params.tenantJwt,
+      },
+    );
 
     return { projectId: upsert.project.id, action: upsert.action };
   } catch {

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026.3.1-beta.1
+
+### Changes
+
+- Knowledge loop: `KnowledgeLoopService` now writes a timestamped activity entry to `.coderClaw/memory/YYYY-MM-DD.md` after every agent run (files created/edited, tools used), then syncs the full `.coderClaw/` directory to CoderClawLink if credentials are configured.
+- Knowledge loop: `syncCoderClawDirectory()` extracted as a standalone reusable export from `clawlink-directory-sync.ts` — callable at any time, not just on gateway startup. `syncCoderClawDirectoryOnStartup` is now a thin wrapper.
+- Knowledge loop: `appendKnowledgeMemory()` added to `project-context.ts` — appends entries to `.coderClaw/memory/YYYY-MM-DD.md`, creating the file and directory as needed.
+- Project knowledge tool: new `"memory"` query type reads the last 7 `.coderClaw/memory/*.md` files and returns them joined with separators. Also included in `"all"`.
+
+Docs: https://docs.coderclaw.ai
+
 ## 2026.2.27-beta.2
 
 ### Changes

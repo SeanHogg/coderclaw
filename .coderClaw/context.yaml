@@ -27,9 +27,9 @@ architecture:
     - src/agents (agent spawning, tool dispatch, model selection)
     - src/coderclaw (orchestrator, agent roles, project context, tools)
     - src/tui (terminal UI, Ink components, slash commands)
-    - src/transport (ClawLinkTransportAdapter, upstream WS client)
+    - src/transport (ClawLinkTransportAdapter, HTTP runtime task lifecycle)
+    - src/infra (ClawLinkRelayService WS relay, directory sync, config, logging, git, env)
     - src/providers (LLM provider adapters — Anthropic, OpenAI, Ollama, etc.)
-    - src/infra (config, logging, git, env)
     - extensions/ (plugin system — OTel, memory, channels, etc.)
     - skills/ (56 skill definitions with SKILL.md + optional scripts)
   patterns:

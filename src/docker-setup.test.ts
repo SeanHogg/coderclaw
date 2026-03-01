@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -63,7 +63,7 @@ function createEnv(
   overrides: Record<string, string | undefined> = {},
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
-    PATH: `${sandbox.binDir}:${process.env.PATH ?? ""}`,
+    PATH: `${sandbox.binDir}${delimiter}${process.env.PATH ?? ""}`,
     HOME: process.env.HOME ?? sandbox.rootDir,
     LANG: process.env.LANG,
     LC_ALL: process.env.LC_ALL,
@@ -111,11 +111,20 @@ describe("docker-setup.sh", () => {
   });
 
   it("handles env defaults, home-volume mounts, and apt build args", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
     if (!sandbox) {
       throw new Error("sandbox missing");
     }
 
-    const result = spawnSync("bash", [sandbox.scriptPath], {
+    const systemBash = resolveBashForCompatCheck();
+    if (!systemBash) {
+      return;
+    }
+
+    const result = spawnSync(systemBash, [sandbox.scriptPath], {
       cwd: sandbox.rootDir,
       env: createEnv(sandbox, {
         CODERCLAW_DOCKER_APT_PACKAGES: "ffmpeg build-essential",

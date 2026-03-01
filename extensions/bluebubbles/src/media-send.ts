@@ -85,6 +85,23 @@ function isPathInsideRoot(candidate: string, root: string): boolean {
   return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(rootWithSep);
 }
 
+function getInode(stat: { ino: number | bigint }): string {
+  return String(stat.ino);
+}
+
+function isSameFileIdentity(
+  left: { ino: number | bigint; dev: number | bigint },
+  right: { ino: number | bigint; dev: number | bigint },
+): boolean {
+  if (getInode(left) !== getInode(right)) {
+    return false;
+  }
+  if (process.platform === "win32") {
+    return true;
+  }
+  return left.dev === right.dev;
+}
+
 function resolveMediaLocalRoots(params: { cfg: CoderClawConfig; accountId?: string }): string[] {
   const account = resolveBlueBubblesAccount({
     cfg: params.cfg,
@@ -116,14 +133,10 @@ async function assertLocalMediaPathAllowed(params: {
 
   for (const rootEntry of params.localRoots) {
     const resolvedRootInput = resolveConfiguredPath(rootEntry);
-    const relativeToRoot = path.relative(resolvedRootInput, resolvedLocalPath);
-    if (
-      relativeToRoot.startsWith("..") ||
-      path.isAbsolute(relativeToRoot) ||
-      relativeToRoot === ""
-    ) {
+    if (!isPathInsideRoot(resolvedLocalPath, resolvedRootInput)) {
       continue;
     }
+    const relativeToRoot = path.relative(resolvedRootInput, resolvedLocalPath);
 
     let rootReal: string;
     try {
@@ -150,7 +163,7 @@ async function assertLocalMediaPathAllowed(params: {
         continue;
       }
       const realStat = await fs.stat(realPath);
-      if (stat.ino !== realStat.ino || stat.dev !== realStat.dev) {
+      if (!isSameFileIdentity(stat, realStat)) {
         continue;
       }
 

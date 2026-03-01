@@ -12,8 +12,8 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket } from "ws";
 import { GatewayClient, type GatewayClientOptions } from "../gateway/client.js";
-import { logDebug } from "../logger.js";
 import type { EventFrame } from "../gateway/protocol/index.js";
+import { logDebug } from "../logger.js";
 
 export type ClawLinkRelayOptions = {
   /** Base HTTP(S) URL of coderClawLink, e.g. "https://api.coderclaw.ai" */
@@ -42,14 +42,16 @@ export class ClawLinkRelayService {
       .replace(/^https:/, "wss:")
       .replace(/^http:/, "ws:")
       .replace(/\/$/, "");
-    this.upstreamWsUrl  = `${base}/api/claws/${opts.clawId}/upstream?key=${encodeURIComponent(opts.apiKey)}`;
+    this.upstreamWsUrl = `${base}/api/claws/${opts.clawId}/upstream?key=${encodeURIComponent(opts.apiKey)}`;
     this.heartbeatHttpUrl = `${opts.baseUrl.replace(/\/$/, "")}/api/claws/${opts.clawId}/heartbeat?key=${encodeURIComponent(opts.apiKey)}`;
-    this.gatewayWsUrl   = opts.gatewayUrl ?? "ws://127.0.0.1:18789";
+    this.gatewayWsUrl = opts.gatewayUrl ?? "ws://127.0.0.1:18789";
   }
 
   /** Start the relay service. Both WS connections retry on their own. */
   start(): void {
-    if (this.closed) return;
+    if (this.closed) {
+      return;
+    }
     this.connectUpstream();
     this.connectLocalGateway();
   }
@@ -69,7 +71,9 @@ export class ClawLinkRelayService {
   // ---------------------------------------------------------------------------
 
   private connectUpstream(): void {
-    if (this.closed) return;
+    if (this.closed) {
+      return;
+    }
 
     const ws = new WebSocket(this.upstreamWsUrl);
     this.ws = ws;
@@ -82,7 +86,17 @@ export class ClawLinkRelayService {
 
     ws.on("message", (raw) => {
       try {
-        const msg = JSON.parse(String(raw)) as Record<string, unknown>;
+        const rawText =
+          typeof raw === "string"
+            ? raw
+            : raw instanceof Buffer
+              ? raw.toString("utf-8")
+              : Array.isArray(raw)
+                ? Buffer.concat(raw).toString("utf-8")
+                : raw instanceof ArrayBuffer
+                  ? Buffer.from(new Uint8Array(raw)).toString("utf-8")
+                  : "";
+        const msg = JSON.parse(rawText) as Record<string, unknown>;
         this.handleRelayMessage(msg);
       } catch {
         /* ignore malformed frames */
@@ -125,7 +139,7 @@ export class ClawLinkRelayService {
         const session = typeof msg.session === "string" ? msg.session : "default";
         this.gatewayClient
           ?.request("chat.send", {
-            sessionKey:     session,
+            sessionKey: session,
             message,
             idempotencyKey: randomUUID(),
           })
@@ -156,7 +170,9 @@ export class ClawLinkRelayService {
   }
 
   private scheduleReconnect(): void {
-    if (this.closed) return;
+    if (this.closed) {
+      return;
+    }
     const delay = this.backoffMs;
     this.backoffMs = Math.min(this.backoffMs * 2, 30_000);
     setTimeout(() => this.connectUpstream(), delay).unref();
@@ -168,8 +184,8 @@ export class ClawLinkRelayService {
 
   private connectLocalGateway(): void {
     const opts: GatewayClientOptions = {
-      url:            this.gatewayWsUrl,
-      onEvent:        (evt) => this.handleGatewayEvent(evt),
+      url: this.gatewayWsUrl,
+      onEvent: (evt) => this.handleGatewayEvent(evt),
       onConnectError: (err) => {
         logDebug(`[clawlink-relay] local gateway connect error: ${String(err)}`);
       },
@@ -185,20 +201,27 @@ export class ClawLinkRelayService {
    * then broadcast to all connected browser clients via the upstream WS.
    */
   private handleGatewayEvent(evt: EventFrame): void {
-    if (evt.event !== "chat") return;
+    if (evt.event !== "chat") {
+      return;
+    }
 
-    const p = evt.payload as {
-      type?: string;
-      text?: string;
-      role?: string;
-      delta?: string;
-      toolCallId?: string;
-      toolName?: string;
-      toolInput?: string;
-      toolResult?: string;
-    } | null | undefined;
+    const p = evt.payload as
+      | {
+          type?: string;
+          text?: string;
+          role?: string;
+          delta?: string;
+          toolCallId?: string;
+          toolName?: string;
+          toolInput?: string;
+          toolResult?: string;
+        }
+      | null
+      | undefined;
 
-    if (!p) return;
+    if (!p) {
+      return;
+    }
 
     switch (p.type) {
       case "delta":
@@ -209,15 +232,15 @@ export class ClawLinkRelayService {
         break;
       case "tool_use":
         this.sendToRelay({
-          type:       "tool.start",
+          type: "tool.start",
           toolCallId: p.toolCallId,
-          toolName:   p.toolName,
-          toolInput:  p.toolInput,
+          toolName: p.toolName,
+          toolInput: p.toolInput,
         });
         break;
       case "tool_result":
         this.sendToRelay({
-          type:       "tool.result",
+          type: "tool.result",
           toolCallId: p.toolCallId,
           toolResult: p.toolResult,
         });

@@ -214,6 +214,65 @@ See [Troubleshooting](/troubleshooting) and [Doctor](/cli/doctor) for full guida
 
 ---
 
+## CoderClawLink Relay
+
+When `CODERCLAW_LINK_API_KEY` is set and the project's `.coderClaw/context.yaml`
+contains a `clawLink.instanceId`, the gateway starts `ClawLinkRelayService` automatically
+as part of `startGatewaySidecars`.
+
+```
+~/.coderclaw/.env
+  CODERCLAW_LINK_API_KEY=<key>
+  CODERCLAW_LINK_URL=https://api.coderclaw.ai   # optional, this is the default
+
+.coderClaw/context.yaml
+  clawLink:
+    instanceId: "42"
+```
+
+### What the relay does
+
+The relay maintains two concurrent connections:
+
+1. **Upstream WebSocket** (`ClawLinkRelayService`): connects to
+   `wss://api.coderclaw.ai/api/claws/:id/upstream`. The cloud `ClawRelayDO` Durable Object
+   holds this socket as the "upstream" and fans messages out to all browser clients connected
+   to the same claw panel.
+
+2. **Local bridge** (`GatewayClient`): connects to the local gateway at
+   `ws://127.0.0.1:18789`. Gateway events (agent deltas, tool calls, completions) are
+   translated into ClawLink wire protocol and broadcast through the upstream socket.
+
+### Message flow
+
+```
+Browser user types in Claw panel
+  → ClawRelayDO receives { type:"chat", message, session }
+  → forwarded to upstream socket
+  → ClawLinkRelayService.handleRelayMessage()
+  → GatewayClient.request("chat.send", { sessionKey, message, idempotencyKey })
+  → local agent processes and streams response
+  → GatewayClient emits "chat" EventFrame (delta/message/tool_use/tool_result)
+  → ClawLinkRelayService.handleGatewayEvent()
+  → upstream socket sends { type:"chat.delta", delta } etc.
+  → ClawRelayDO.broadcast() → all browser clients
+```
+
+### Connection state visible in the UI
+
+| Field         | Updated when                                                           |
+| ------------- | ---------------------------------------------------------------------- |
+| `connectedAt` | Upstream WS connects / disconnects                                     |
+| `lastSeenAt`  | On connect, then HTTP `PATCH /api/claws/:id/heartbeat` every 5 minutes |
+
+### On-startup directory sync
+
+`ClawLinkDirectorySync` uploads all `.coderClaw/` files to the API via
+`PUT /api/claws/:id/directories/sync` immediately after the relay starts. This makes project
+context, architecture, and rules available to the browser UI without any manual sync step.
+
+---
+
 ## Further Reading
 
 - [Gateway Architecture](/concepts/architecture) — component diagram and connection flow

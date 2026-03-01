@@ -1006,6 +1006,7 @@ export async function runEmbeddedPiAgent(
             suppressToolErrorWarnings: params.suppressToolErrorWarnings,
             inlineToolResultsAllowed: false,
           });
+          const toolMetas = Array.isArray(attempt.toolMetas) ? attempt.toolMetas : [];
 
           const continuationDecision = shouldAutoContinueRun({
             userPrompt: params.prompt,
@@ -1013,7 +1014,7 @@ export async function runEmbeddedPiAgent(
             payloadTexts: payloads
               .map((payload) => (typeof payload.text === "string" ? payload.text : ""))
               .filter((text) => text.length > 0),
-            toolNames: attempt.toolMetas.map((entry) => entry.toolName),
+            toolNames: toolMetas.map((entry) => entry.toolName),
             hasToolError: Boolean(attempt.lastToolError),
             aborted,
             timedOut,
@@ -1022,7 +1023,7 @@ export async function runEmbeddedPiAgent(
           });
 
           log.debug(
-            `auto-continue decision: shouldContinue=${continuationDecision.shouldContinue} reason=${continuationDecision.reason ?? "none"} runId=${params.runId} sessionId=${params.sessionId} toolCalls=${attempt.toolMetas.length}`,
+            `auto-continue decision: shouldContinue=${continuationDecision.shouldContinue} reason=${continuationDecision.reason ?? "none"} runId=${params.runId} sessionId=${params.sessionId} toolCalls=${toolMetas.length}`,
           );
 
           if (

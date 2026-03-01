@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getMemorySearchManager, type MemoryIndexManager } from "./index.js";
 import "./test-runtime-mocks.js";
+import { hasNodeSqliteSupport } from "./test-sqlite-support.js";
 
 let embedBatchCalls = 0;
 
@@ -30,7 +31,9 @@ vi.mock("./embeddings.js", () => {
   };
 });
 
-describe("memory index", () => {
+const describeIfSqlite = hasNodeSqliteSupport ? describe : describe.skip;
+
+describeIfSqlite("memory index", () => {
   let fixtureRoot = "";
   let workspaceDir = "";
   let memoryDir = "";

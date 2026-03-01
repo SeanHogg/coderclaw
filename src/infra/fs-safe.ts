@@ -26,6 +26,35 @@ const NOT_FOUND_CODES = new Set(["ENOENT", "ENOTDIR"]);
 
 const ensureTrailingSep = (value: string) => (value.endsWith(path.sep) ? value : value + path.sep);
 
+const stripWindowsNamespacePrefix = (value: string): string => {
+  if (process.platform !== "win32") {
+    return value;
+  }
+  if (value.startsWith("\\\\?\\UNC\\")) {
+    return `\\\\${value.slice("\\\\?\\UNC\\".length)}`;
+  }
+  if (value.startsWith("\\\\?\\")) {
+    return value.slice("\\\\?\\".length);
+  }
+  return value;
+};
+
+const canonicalizeForContainment = (value: string): string =>
+  path.normalize(stripWindowsNamespacePrefix(value));
+
+const isPathInsideRoot = (candidatePath: string, rootPath: string): boolean => {
+  const normalizedCandidate = canonicalizeForContainment(candidatePath);
+  const normalizedRoot = canonicalizeForContainment(rootPath);
+  const rootWithSep = ensureTrailingSep(normalizedRoot);
+  if (process.platform === "win32") {
+    const candidateLower = normalizedCandidate.toLowerCase();
+    const rootLower = normalizedRoot.toLowerCase();
+    const rootWithSepLower = rootWithSep.toLowerCase();
+    return candidateLower === rootLower || candidateLower.startsWith(rootWithSepLower);
+  }
+  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(rootWithSep);
+};
+
 const isNodeError = (err: unknown): err is NodeJS.ErrnoException =>
   Boolean(err && typeof err === "object" && "code" in (err as Record<string, unknown>));
 
@@ -34,6 +63,18 @@ const isNotFoundError = (err: unknown) =>
 
 const isSymlinkOpenError = (err: unknown) =>
   isNodeError(err) && (err.code === "ELOOP" || err.code === "EINVAL" || err.code === "ENOTSUP");
+
+const statInode = (value: Stats): string => String(value.ino);
+
+const isSameFileIdentity = (left: Stats, right: Stats): boolean => {
+  if (statInode(left) !== statInode(right)) {
+    return false;
+  }
+  if (process.platform === "win32") {
+    return true;
+  }
+  return left.dev === right.dev;
+};
 
 export async function openFileWithinRoot(params: {
   rootDir: string;
@@ -50,7 +91,7 @@ export async function openFileWithinRoot(params: {
   }
   const rootWithSep = ensureTrailingSep(rootReal);
   const resolved = path.resolve(rootWithSep, params.relativePath);
-  if (!resolved.startsWith(rootWithSep)) {
+  if (!isPathInsideRoot(resolved, rootReal)) {
     throw new SafeOpenError("invalid-path", "path escapes root");
   }
 
@@ -77,7 +118,7 @@ export async function openFileWithinRoot(params: {
     }
 
     const realPath = await fs.realpath(resolved);
-    if (!realPath.startsWith(rootWithSep)) {
+    if (!isPathInsideRoot(realPath, rootReal)) {
       throw new SafeOpenError("invalid-path", "path escapes root");
     }
 
@@ -87,7 +128,7 @@ export async function openFileWithinRoot(params: {
     }
 
     const realStat = await fs.stat(realPath);
-    if (stat.ino !== realStat.ino || stat.dev !== realStat.dev) {
+    if (!isSameFileIdentity(stat, realStat)) {
       throw new SafeOpenError("invalid-path", "path mismatch");
     }
 

@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { CoderClawConfig } from "../config/config.js";
 import { getMemorySearchManager, type MemoryIndexManager } from "./index.js";
 import { createOpenAIEmbeddingProviderMock } from "./test-embeddings-mock.js";
+import { hasNodeSqliteSupport } from "./test-sqlite-support.js";
 import "./test-runtime-mocks.js";
 
 const embedBatch = vi.fn(async (_texts: string[]) => [] as number[][]);
@@ -18,7 +19,9 @@ vi.mock("./embeddings.js", () => ({
     }),
 }));
 
-describe("memory indexing with OpenAI batches", () => {
+const describeIfSqlite = hasNodeSqliteSupport ? describe : describe.skip;
+
+describeIfSqlite("memory indexing with OpenAI batches", () => {
   let fixtureRoot: string;
   let workspaceDir: string;
   let memoryDir: string;

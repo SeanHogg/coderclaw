@@ -8,6 +8,7 @@ import {
 import { resolveAgentSessionDirs } from "../agents/session-dirs.js";
 import { cleanStaleLockFiles } from "../agents/session-write-lock.js";
 import type { CliDeps } from "../cli/deps.js";
+import { loadProjectContext } from "../coderclaw/project-context.js";
 import type { loadConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import { startGmailWatcherWithLogs } from "../hooks/gmail-watcher-lifecycle.js";
@@ -17,10 +18,11 @@ import {
   triggerInternalHook,
 } from "../hooks/internal-hooks.js";
 import { loadInternalHooks } from "../hooks/loader.js";
+import { syncCoderClawDirectoryOnStartup } from "../infra/clawlink-directory-sync.js";
+import { ClawLinkRelayService } from "../infra/clawlink-relay.js";
 import { readSharedEnvVar } from "../infra/env-file.js";
 import { isTruthyEnvValue } from "../infra/env.js";
-import { ClawLinkRelayService } from "../infra/clawlink-relay.js";
-import { loadProjectContext } from "../coderclaw/project-context.js";
+import { KnowledgeLoopService } from "../infra/knowledge-loop.js";
 import type { loadCoderClawPlugins } from "../plugins/loader.js";
 import { type PluginServicesHandle, startPluginServices } from "../plugins/services.js";
 import { startBrowserControlServerIfEnabled } from "./server-browser.js";
@@ -172,24 +174,43 @@ export async function startGatewaySidecars(params: {
     }, 750);
   }
 
-  // Start the ClawLink upstream relay if credentials are configured.
+  // Start the ClawLink upstream relay and knowledge loop if credentials are configured.
   // Both the upstream WS and local gateway bridge retry independently on failure.
   let clawLinkRelay: ClawLinkRelayService | null = null;
+  let knowledgeLoop: KnowledgeLoopService | null = null;
   try {
     const apiKey = readSharedEnvVar("CODERCLAW_LINK_API_KEY");
     const baseUrl = readSharedEnvVar("CODERCLAW_LINK_URL") ?? "https://api.coderclaw.ai";
     if (apiKey) {
       const ctx = await loadProjectContext(params.defaultWorkspaceDir);
       const clawId = ctx?.clawLink?.instanceId;
+      const projectId = ctx?.clawLink?.projectId ? Number(ctx.clawLink.projectId) : undefined;
+
       if (clawId) {
         clawLinkRelay = new ClawLinkRelayService({ baseUrl, clawId: String(clawId), apiKey });
         clawLinkRelay.start();
         params.log.warn(`[clawlink] relay started for claw ${clawId}`);
+        void syncCoderClawDirectoryOnStartup({
+          workspaceDir: params.defaultWorkspaceDir,
+          log: params.log,
+        });
       }
+
+      // Knowledge loop runs whenever an API key is present; sync is skipped internally
+      // when clawId is absent.
+      knowledgeLoop = new KnowledgeLoopService({
+        workspaceDir: params.defaultWorkspaceDir,
+        apiKey,
+        baseUrl,
+        clawId: clawId ? String(clawId) : null,
+        projectId,
+      });
+      knowledgeLoop.start();
+      params.log.warn("[knowledge-loop] started");
     }
   } catch (err) {
-    params.log.warn(`[clawlink] relay failed to start: ${String(err)}`);
+    params.log.warn(`[clawlink/knowledge-loop] startup failed: ${String(err)}`);
   }
 
-  return { browserControl, pluginServices, clawLinkRelay };
+  return { browserControl, pluginServices, clawLinkRelay, knowledgeLoop };
 }

@@ -2,6 +2,8 @@
  * Tool for querying project knowledge and context
  */
 
+import fs from "node:fs/promises";
+import path from "node:path";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type } from "@sinclair/typebox";
 import { jsonResult } from "../../agents/tools/common.js";
@@ -10,6 +12,7 @@ import {
   loadProjectRules,
   loadProjectArchitecture,
   loadCustomAgentRoles,
+  resolveCoderClawDir,
 } from "../project-context.js";
 
 const ProjectKnowledgeSchema = Type.Object({
@@ -17,7 +20,7 @@ const ProjectKnowledgeSchema = Type.Object({
     description: "Root directory of the project",
   }),
   query: Type.String({
-    description: "What to query: 'context', 'rules', 'architecture', 'agents', or 'all'",
+    description: "What to query: 'context', 'rules', 'architecture', 'agents', 'memory', or 'all'",
   }),
 });
 
@@ -30,7 +33,7 @@ export const projectKnowledgeTool: AgentTool<typeof ProjectKnowledgeSchema, stri
   name: "project_knowledge",
   label: "Project Knowledge",
   description:
-    "Query project-specific knowledge including context, rules, architecture, and custom agent roles from the .coderClaw directory.",
+    "Query project-specific knowledge including context, rules, architecture, custom agent roles, and recent agent activity memory from the .coderClaw directory.",
   parameters: ProjectKnowledgeSchema,
   async execute(_toolCallId: string, params: ProjectKnowledgeParams) {
     const { projectRoot, query } = params;
@@ -63,6 +66,24 @@ export const projectKnowledgeTool: AgentTool<typeof ProjectKnowledgeSchema, stri
         const agents = await loadCustomAgentRoles(projectRoot);
         if (agents.length > 0) {
           result.agents = agents;
+        }
+      }
+
+      if (query === "memory" || query === "all") {
+        const dir = resolveCoderClawDir(projectRoot);
+        try {
+          const files = (await fs.readdir(dir.memoryDir))
+            .filter((f) => f.endsWith(".md"))
+            .toSorted()
+            .slice(-7); // last 7 days
+          if (files.length > 0) {
+            const contents = await Promise.all(
+              files.map((f) => fs.readFile(path.join(dir.memoryDir, f), "utf-8")),
+            );
+            result.memory = contents.join("\n\n---\n\n");
+          }
+        } catch {
+          // Directory missing or empty — silent
         }
       }
 

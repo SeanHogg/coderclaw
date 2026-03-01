@@ -47,9 +47,14 @@ Human Developer (TUI / IDE / messaging channel)
 │  → POST /api/runtime/executions         │
 │  → GET  /api/runtime/executions/:id     │
 │                                          │
-│  ClawLinkUpstreamClient (WS) [PLANNED]  │
+│  ClawLinkRelayService (WS)              │
 │  → wss://.../api/claws/:id/upstream     │
-│  → bridges gateway ↔ ClawRelayDO        │
+│  → bridges local gateway ↔ ClawRelayDO  │
+│  → PATCH .../heartbeat every 5 min      │
+│                                          │
+│  ClawLinkDirectorySync (HTTP)           │
+│  → PUT /api/claws/:id/directories/sync  │
+│  → one-way upload of .coderClaw/ files  │
 └─────────────┬───────────────────────────┘
               │
               ▼
@@ -95,8 +100,19 @@ Human Developer (TUI / IDE / messaging channel)
 
 ### Transport (`src/transport/`)
 
-- `clawlink-adapter.ts` — HTTP transport to coderClawLink API
+- `clawlink-adapter.ts` — HTTP transport to coderClawLink API (runtime executions)
 - Types: TransportAdapter interface, ClawLinkConfig, RuntimeInterface
+
+### ClawLink Relay (`src/infra/`)
+
+- `clawlink-relay.ts` — `ClawLinkRelayService`: persistent upstream WS + local gateway bridge
+  - Connects to `wss://.../api/claws/:id/upstream` on gateway startup
+  - Bridges browser→agent: translates relay wire messages into local `GatewayClient` requests
+  - Bridges agent→browser: converts `"chat"` EventFrames to ClawLink wire protocol for broadcast
+  - HTTP heartbeat PATCH every 5 minutes to keep `lastSeenAt` fresh in the DB
+  - Exponential backoff reconnect (1 s → 30 s) on WS drop
+- `clawlink-directory-sync.ts` — `syncCoderClawDirectoryOnStartup()`: one-way HTTP PUT of
+  all `.coderClaw/` files to the API on gateway boot (up to 200 files, 512 KB each)
 
 ### Extensions (`extensions/`)
 
@@ -115,12 +131,16 @@ Human Developer (TUI / IDE / messaging channel)
 
 ## Known Architectural Gaps
 
-See `.coderClaw/planning/ROADMAP.md` Phase -1 for the 4 critical gaps:
+See `.coderClaw/planning/CAPABILITY_GAPS.md` for the full audit. Current status:
 
-1. `executeWorkflow()` never called — orchestrator is dead code
-2. `agent-roles.ts` orphaned — role definitions not read by runtime
-3. Session handoff never wired — save/load functions exist but unused
-4. No workflow persistence — all state in-memory
+1. ✅ PARTIAL — `executeWorkflow()` now called; `planning`/`adversarial` workflow types exist
+   in `orchestrator-enhanced.ts` but not yet wired into the tool switch
+2. ✅ RESOLVED — `agent-roles.ts` wired; gateway loads custom roles from `.coderClaw/agents/`
+   on startup; `findAgentRole` used by orchestrator's `executeTask`
+3. MISSING — Session handoff: `saveSessionHandoff`/`loadLatestSessionHandoff` implemented
+   but never called from the agent lifecycle
+4. MISSING — Workflow persistence: orchestrator state is in-memory only (`Map<string, Workflow>`)
+5. MISSING — Post-task knowledge loop: `.coderClaw/memory/` never indexed; no post-task hook
 
 ## Data Flow: Agent Task Execution
 
@@ -139,9 +159,17 @@ See `.coderClaw/planning/ROADMAP.md` Phase -1 for the 4 critical gaps:
 
 ```
 1. coderclaw init → login → register claw → get API key
-2. API key stored in ~/.coderclaw/.env
-3. ClawLinkTransportAdapter reads API key on boot
-4. HTTP requests to /api/runtime/* for task lifecycle
-5. [PLANNED] ClawLinkUpstreamClient opens WS to relay DO
-6. [PLANNED] Messages bridge local gateway ↔ cloud SPA
+2. API key stored in ~/.coderclaw/.env (CODERCLAW_LINK_API_KEY)
+3. clawLink.instanceId stored in .coderClaw/context.yaml
+4. On gateway startup:
+   a. ClawLinkRelayService opens WS to /api/claws/:id/upstream
+   b. ClawLinkDirectorySync uploads .coderClaw/ files via HTTP PUT
+   c. DB: connectedAt and lastSeenAt set immediately
+5. Browser client connects to /api/claws/:id/ws → ClawRelayDO
+   a. ClawRelayDO sends { type:"claw_online" } immediately
+6. Browser → ClawRelayDO → upstream WS → ClawLinkRelayService
+   → GatewayClient.request("chat.send") → local agent
+7. Agent response → GatewayClient event → ClawLinkRelayService
+   → upstream WS → ClawRelayDO.broadcast() → all browser clients
+8. HTTP heartbeat PATCH every 5 min keeps lastSeenAt fresh
 ```

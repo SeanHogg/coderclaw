@@ -725,10 +725,13 @@ async function ensureProjectMapping(params: {
       }),
     });
 
-    await clawLinkFetch(`${params.serverUrl}/api/claws/${params.clawId}/projects/${upsert.project.id}`, {
-      method: "PUT",
-      token: params.tenantJwt,
-    });
+    await clawLinkFetch(
+      `${params.serverUrl}/api/claws/${params.clawId}/projects/${upsert.project.id}`,
+      {
+        method: "PUT",
+        token: params.tenantJwt,
+      },
+    );
 
     return { projectId: upsert.project.id, action: upsert.action };
   } catch {
@@ -744,21 +747,32 @@ async function ensureProjectMappingFromStoredCreds(params: {
   const serverUrl = readSharedEnvVar("CODERCLAW_LINK_URL") ?? "https://api.coderclaw.ai";
   const webToken = readSharedEnvVar("CODERCLAW_LINK_WEB_TOKEN");
   const tenantIdRaw = readSharedEnvVar("CODERCLAW_LINK_TENANT_ID");
-  if (!webToken || !tenantIdRaw) return;
+  if (!webToken || !tenantIdRaw) {
+    return;
+  }
 
   const tenantId = Number(tenantIdRaw);
-  if (!Number.isFinite(tenantId) || tenantId <= 0) return;
+  if (!Number.isFinite(tenantId) || tenantId <= 0) {
+    return;
+  }
 
   const ctx = await loadProjectContext(params.projectRoot).catch(() => null);
   const clawId = ctx?.clawLink?.instanceId?.trim();
-  if (!clawId) return;
+  if (!clawId) {
+    return;
+  }
 
-  const tenantJwtRes = await clawLinkFetch<{ token: string }>(`${serverUrl}/api/auth/tenant-token`, {
-    method: "POST",
-    token: webToken,
-    body: JSON.stringify({ tenantId }),
-  }).catch(() => null);
-  if (!tenantJwtRes?.token) return;
+  const tenantJwtRes = await clawLinkFetch<{ token: string }>(
+    `${serverUrl}/api/auth/tenant-token`,
+    {
+      method: "POST",
+      token: webToken,
+      body: JSON.stringify({ tenantId }),
+    },
+  ).catch(() => null);
+  if (!tenantJwtRes?.token) {
+    return;
+  }
 
   const mapped = await ensureProjectMapping({
     serverUrl,
@@ -772,6 +786,7 @@ async function ensureProjectMappingFromStoredCreds(params: {
   if (mapped) {
     await updateProjectContextFields(params.projectRoot, {
       clawLink: {
+        instanceId: clawId,
         ...ctx?.clawLink,
         projectId: mapped.projectId,
       },
@@ -1194,6 +1209,11 @@ export function createInitCommand(): Command {
 
         // CoderClawLink connection
         await promptClawLink(projectRoot, projectNameInput || detected.projectName);
+        await ensureProjectMappingFromStoredCreds({
+          projectRoot,
+          projectName: projectNameInput || detected.projectName,
+          description: descriptionInput || detected.description,
+        });
 
         const aiPopulate = await confirm({
           message: "Use an AI agent to populate context.yaml, architecture.md, and rules.yaml now?",
