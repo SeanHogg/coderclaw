@@ -1,20 +1,12 @@
 #!/usr/bin/env node
-/**
- * initialize-memory.js
- *
- * Run once per new CoderClaw instance to set up local memory infrastructure.
- * Creates: memory/ (if missing), MEMORY.md, memory-index.json, cron job
- */
-
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
 const rootDir = path.join(__dirname, '..', '..');
-const memoryDir = path.join(rootDir, '.coderclaw', 'memory');
-const memIndexPath = path.join(rootDir, '.coderclaw', 'memory-index.json');
+const memoryDir = path.join(rootDir, '.coderClaw', 'memory');
+const memIndexPath = path.join(rootDir, '.coderClaw', 'memory-index.json');
 const memFilePath = path.join(rootDir, 'MEMORY.md');
-const cronJobName = 'memory-suggestion-scan';
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) {
@@ -25,7 +17,6 @@ function ensureDir(dir) {
 
 function createMemoryDir() {
   ensureDir(memoryDir);
-  // Create initial daily log for today if missing
   const today = new Date().toISOString().slice(0, 10);
   const todayFile = path.join(memoryDir, `${today}.md`);
   if (!fs.existsSync(todayFile)) {
@@ -67,7 +58,6 @@ Last updated: ${new Date().toISOString().slice(0, 10)}
 
 function generateIndex() {
   try {
-    // Use the existing generator
     const scriptPath = path.join(__dirname, 'generate-memory-index.cjs');
     execSync(`node "${scriptPath}"`, { cwd: rootDir, stdio: 'inherit' });
   } catch (err) {
@@ -77,7 +67,7 @@ function generateIndex() {
 }
 
 function scheduleCron() {
-  // Check if cron job already exists by listing
+  const cronJobName = 'memory-suggestion-scan';
   try {
     const listResult = execSync('coderclaw cron list --includeDisabled', { encoding: 'utf8' });
     if (listResult.includes(cronJobName)) {
@@ -88,13 +78,11 @@ function scheduleCron() {
     // continue to add
   }
 
-  // Add daily suggestion scan
   try {
     execSync(`coderclaw cron add --name "${cronJobName}" --every 86400000 --payload "Run memory suggestion scan" --sessionTarget main`, { cwd: rootDir, stdio: 'inherit' });
     console.log(`✅ Scheduled cron job: ${cronJobName} (daily)`);
   } catch (err) {
     console.error('❌ Failed to schedule cron job:', err.message);
-    // Not fatal
   }
 }
 

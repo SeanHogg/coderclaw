@@ -1,17 +1,14 @@
 #!/usr/bin/env node
-/**
- * enable-memory-sharing.js
- *
- * Opt-in to share memory suggestions with other CoderClaw instances in the same tenant.
- * This sets up a local sync directory and configures periodic push of index hash peers.
- */
-
 const fs = require('fs');
 const path = require('path');
 
 const rootDir = path.join(__dirname, '..', '..');
-const syncDir = path.join(rootDir, '.coderclaw', 'memory-sync');
+const syncDir = path.join(rootDir, '.coderClaw', 'memory-sync');
 const configPath = path.join(syncDir, 'config.yaml');
+
+function ensureDir(dir) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
 
 function enableSharing() {
   if (fs.existsSync(configPath)) {
@@ -24,11 +21,11 @@ function enableSharing() {
   const config = `enabled: true
 sync:
   mode: push
-  intervalMs: 86400000  # daily, same as suggestion scan
-  peers: []  # filled via claw_fleet discovery
+  intervalMs: 86400000
+  peers: []
 conflictResolution: merge-preference-local
 privacy:
-  privateEntries: true  # never share entries tagged #private
+  privateEntries: true
 `;
   fs.writeFileSync(configPath, config);
   console.log(`✅ Memory sharing enabled. Config written to ${configPath}`);

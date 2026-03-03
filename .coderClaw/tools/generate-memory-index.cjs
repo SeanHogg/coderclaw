@@ -1,8 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-// Memory logs stored in .coderclaw/memory/
-const memoryDir = path.join(__dirname, '..', 'memory');
+const memoryDir = path.join(__dirname, '..', '..', 'memory');
 const indexPath = path.join(__dirname, '..', 'memory-index.json');
 
 function parseMemoryFile(filePath, fileName) {
@@ -12,7 +11,6 @@ function parseMemoryFile(filePath, fileName) {
   let currentEntry = null;
 
   for (let line of lines) {
-    // Match: ## [2026-03-02T01:45:36.896Z] session:agent:main:default
     const timestampMatch = line.match(/^## \[([^\]]+)\](.*)$/);
     if (timestampMatch) {
       if (currentEntry) entries.push(currentEntry);
@@ -49,11 +47,11 @@ function parseMemoryFile(filePath, fileName) {
   });
 }
 
-// Build index
-const files = fs.readdirSync(memoryDir).filter(f => f.endsWith('.md'));
+const memoryBaseDir = path.join(__dirname, '..', 'memory');
+const files = fs.readdirSync(memoryBaseDir).filter(f => f.endsWith('.md'));
 let allEntries = [];
 for (const file of files) {
-  const filePath = path.join(memoryDir, file);
+  const filePath = path.join(memoryBaseDir, file);
   const fileEntries = parseMemoryFile(filePath, file);
   allEntries = allEntries.concat(fileEntries);
 }
