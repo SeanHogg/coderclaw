@@ -92,6 +92,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     const state = makeState(params?.state);
     const context = makeContext(state);
     const chatLog = (params?.chatLog ?? context.chatLog) as MockChatLog & HandlerChatLog;
+    const sendMessage = vi.fn(async (_: string) => {});
     const handlers = createEventHandlers({
       chatLog,
       tui: context.tui,
@@ -101,11 +102,13 @@ describe("tui-event-handlers: handleAgentEvent", () => {
       loadHistory: context.loadHistory,
       isLocalRunId: context.isLocalRunId,
       forgetLocalRunId: context.forgetLocalRunId,
+      sendMessage,
     });
     return {
       ...context,
       state,
       chatLog,
+      sendMessage,
       ...handlers,
     };
   };
@@ -635,6 +638,33 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     expect(chatLog.updateAssistant).toHaveBeenLastCalledWith("continued", "run-active");
   });
 
+  it("auto-continues when run contains only reads", async () => {
+    const { state, chatLog, sendMessage, handleAgentEvent } = createHandlersHarness({
+      state: { activeChatRunId: "r1" },
+    });
+
+    // start a read tool event and then a lifecycle end
+    handleAgentEvent({
+      runId: "r1",
+      stream: "tool",
+      data: {
+        phase: "start",
+        toolCallId: "tc-read",
+        name: "read",
+        args: { filePath: "foo.txt" },
+      },
+    });
+    handleAgentEvent({
+      runId: "r1",
+      stream: "lifecycle",
+      data: { phase: "end" },
+    });
+
+    // sendMessage is invoked asynchronously; wait a tick to allow promise to fire
+    await Promise.resolve();
+    expect(sendMessage).toHaveBeenCalledWith("continuing plan");
+  });
+
   it("suppresses non-local empty final placeholders during concurrent runs", () => {
     const { state, chatLog, loadHistory, handleChatEvent } =
       createConcurrentRunHarness("local stream");
@@ -656,7 +686,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     expect(state.activeChatRunId).toBe("run-active");
   });
 
-  it("drops streaming assistant when chat final has no message", () => {
+  it("inserts a placeholder when chat final has no message", () => {
     const { state, chatLog, handleChatEvent } = createHandlersHarness({
       state: { activeChatRunId: null },
     });
@@ -669,6 +699,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     });
     chatLog.dropAssistant.mockClear();
     chatLog.finalizeAssistant.mockClear();
+    chatLog.addSystem.mockClear();
 
     handleChatEvent({
       runId: "run-silent",
@@ -677,6 +708,7 @@ describe("tui-event-handlers: handleAgentEvent", () => {
     });
 
     expect(chatLog.dropAssistant).toHaveBeenCalledWith("run-silent");
-    expect(chatLog.finalizeAssistant).not.toHaveBeenCalled();
+    expect(chatLog.finalizeAssistant).toHaveBeenCalledWith("(no output)", "run-silent");
+    expect(chatLog.addSystem).toHaveBeenCalledWith("run ended with no output");
   });
 });

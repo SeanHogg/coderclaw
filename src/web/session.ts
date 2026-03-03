@@ -128,7 +128,9 @@ export async function createWaSocket(
           opts.onQr?.(qr);
           if (printQr) {
             console.log("Scan this QR in WhatsApp (Linked Devices):");
-            qrcode.generate(qr, { small: true });
+            // `generate` is imported above; earlier code referenced `qrcode` which
+            // doesn't exist, causing a build error. Use the imported function directly.
+            generate(qr, { small: true });
           }
         }
         if (connection === "close") {

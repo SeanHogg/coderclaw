@@ -30,6 +30,9 @@ type EventHandlerContext = {
   isLocalRunId?: (runId: string) => boolean;
   forgetLocalRunId?: (runId: string) => void;
   clearLocalRunIds?: () => void;
+  // callback the UI can provide to send a fresh chat message; used to
+  // automatically continue after a read-only run
+  sendMessage?: (text: string) => Promise<void>;
 };
 
 type RunActivityStats = {
@@ -350,8 +353,7 @@ export function createEventHandlers(context: EventHandlerContext) {
 
   const reportRunActivitySummary = (runId: string) => {
     const stats = runActivity.get(runId);
-    if (!stats || stats.toolStarts === 0) {
-      clearRunActivity(runId);
+    if (!stats) {
       return;
     }
 
@@ -379,6 +381,13 @@ export function createEventHandlers(context: EventHandlerContext) {
     }
 
     emitExecutionAction(`✓ ${parts.join(" · ")}`);
+
+    // if the run read any files, prompt the agent to continue planning. this
+    // ensures we don't stop prematurely right after memory/config reads.
+    if (stats.readFiles.size > 0 && context.sendMessage) {
+      void context.sendMessage("continuing plan").catch(() => {});
+    }
+
     clearRunActivity(runId);
   };
 
@@ -570,7 +579,9 @@ export function createEventHandlers(context: EventHandlerContext) {
         const systemMsg = reason
           ? `run ended with no output (${reason})`
           : "run ended with no output";
+        // add both system note and a lightweight assistant placeholder
         chatLog.addSystem(systemMsg);
+        chatLog.finalizeAssistant(reason ? `(no output; ${reason})` : "(no output)", evt.runId);
 
         reportRunActivitySummary(evt.runId);
         noteFinalizedRun(evt.runId);
@@ -688,12 +699,20 @@ export function createEventHandlers(context: EventHandlerContext) {
     // Agent events (tool streaming, lifecycle) are emitted per-run. Filter against the
     // active chat run id, not the session id. Tool results can arrive after the chat
     // final event, so accept finalized runs for tool updates.
+    // Ensure we always have a stats object for the run as soon as it starts so we can
+    // emit an activity summary even if no tools are invoked.
+    if (evt.stream === "lifecycle" && evt.data && (evt.data as any).phase === "start") {
+      getRunActivity(evt.runId);
+    }
     const isActiveRun = evt.runId === state.activeChatRunId;
     const isKnownRun = isActiveRun || sessionRuns.has(evt.runId) || finalizedRuns.has(evt.runId);
     if (!isKnownRun) {
       return;
     }
     if (evt.stream === "tool") {
+      // ensure we have a stats object even if no tool starts yet (shouldn't
+      // happen since this is a tool event, but keep consistent)
+      getRunActivity(evt.runId);
       const verbose = state.sessionInfo.verboseLevel ?? "off";
       const allowToolEvents = verbose !== "off";
       const allowToolOutput = verbose === "full";
@@ -780,6 +799,9 @@ export function createEventHandlers(context: EventHandlerContext) {
         emitExecutionAction(
           stopReason ? `Composing response… (stop reason: ${stopReason})` : "Composing response…",
         );
+        // emit activity summary immediately on lifecycle end as well as on chat
+        // final to ensure we report statistics even if a chat event never arrives.
+        reportRunActivitySummary(evt.runId);
         scheduleFinalEventTimeout(evt.runId);
       }
       if (phase === "error") {
