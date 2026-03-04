@@ -1,6 +1,7 @@
 # CoderClaw Architecture
 
-> Last updated: 2026-03-04
+> Last updated: 2026-03-04  
+> See also: [Feature Gap Analysis](../docs/FEATURE_GAP_ANALYSIS.md) | [Business Roadmap](../docs/BUSINESS_ROADMAP.md)
 
 ## Overview
 
@@ -226,6 +227,20 @@ See `.coderClaw/planning/CAPABILITY_GAPS.md` for full detail.
 - 🔲 Capability-based claw routing (auto-select best claw by capability)
 - 🔲 Semantic knowledge synthesis (architecture.md auto-update after structural edits)
 - 🔲 coderClawLink: workflow/spec APIs, execution WebSocket streaming, spec portal UI
+
+### Phase 2: Orchestrator → Market Parity (Planned)
+
+See `docs/FEATURE_GAP_ANALYSIS.md` for the full competitor gap analysis.
+
+- 🔲 **Orchestration workspace live UI** — coderClawLink portal: live DAG with per-task status,
+  agent persona display, elapsed time, and output preview (P0)
+- 🔲 **MCP codebase semantic search** — wire `memory-lancedb` into `project_knowledge`;
+  expose CoderClaw tools as MCP server for Cursor/Continue.dev clients (P0)
+- 🔲 **Inline diff / pair programming mode** — staged diff buffer, TUI `/diff`, `/accept`, `/reject` (P1)
+- 🔲 **Session auto-checkpoint** — auto-save handoff on TUI exit if messages exist (P1)
+- 🔲 **Persona profiles** — `.coderClaw/personas/*.yaml` with per-persona model + system prompt (P1)
+- 🔲 **GitHub issue → PR workflow** — new `issue` workflow type; auto PR creation post-workflow (P1)
+- 🔲 **PR review GitHub App** — auto-review on PR events; post comments via `gh` tool (P2)
 
 ---
 
