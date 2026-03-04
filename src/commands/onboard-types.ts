@@ -10,7 +10,7 @@ export type AuthChoice =
   | "token"
   | "chutes"
   | "local"
-  | "transformers-local"
+  | "coderclawllm-local"
   | "vllm"
   | "coderclawllm"
   | "openai-codex"
