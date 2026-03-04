@@ -29,6 +29,12 @@ const AUTH_CHOICE_GROUP_DEFS: {
     choices: ["local"],
   },
   {
+    value: "transformers",
+    label: "Transformers.js (SmolLM2)",
+    hint: "Fully local in-process inference via @huggingface/transformers — no server needed",
+    choices: ["transformers-local"],
+  },
+  {
     value: "coderclawllm",
     label: "CoderClawLLM",
     hint: "Recommended default (managed free model pool)",
@@ -185,6 +191,11 @@ const BASE_AUTH_CHOICE_OPTIONS: ReadonlyArray<AuthChoiceOption> = [
     value: "local",
     label: "Local setup (Ollama / llama.cpp / vLLM)",
     hint: "Guided local setup with auto model discovery",
+  },
+  {
+    value: "transformers-local",
+    label: "Transformers.js — SmolLM2 (fully local, no server)",
+    hint: "Downloads & runs HuggingFace models in-process via @huggingface/transformers (~1 GB)",
   },
   {
     value: "coderclawllm",

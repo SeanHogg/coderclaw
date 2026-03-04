@@ -204,6 +204,7 @@
     "vitest": "^4.0.18"
   },
   "peerDependencies": {
+    "@huggingface/transformers": "^3.0.0",
     "@napi-rs/canvas": "^0.1.89",
     "node-llama-cpp": "3.15.1"
   },

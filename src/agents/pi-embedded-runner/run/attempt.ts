@@ -37,6 +37,7 @@ import { resolveImageSanitizationLimits } from "../../image-sanitization.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
 import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../../ollama-stream.js";
+import { createTransformersStreamFn } from "../../transformers-stream.js";
 import {
   isCloudCodeAssistFormatError,
   resolveBootstrapMaxChars,
@@ -634,6 +635,23 @@ export async function runEmbeddedAttempt(
           typeof providerConfig?.baseUrl === "string" ? providerConfig.baseUrl.trim() : "";
         const ollamaBaseUrl = modelBaseUrl || providerBaseUrl || OLLAMA_NATIVE_BASE_URL;
         activeSession.agent.streamFn = createOllamaStreamFn(ollamaBaseUrl);
+      } else if (params.model.api === "transformers") {
+        // Transformers.js in-process inference: resolve model ID, dtype, and cache dir
+        // from the provider config. baseUrl is repurposed as the cache directory.
+        const providerConfig = params.config?.models?.providers?.[params.model.provider];
+        const cacheDir =
+          typeof providerConfig?.baseUrl === "string" && providerConfig.baseUrl.trim()
+            ? providerConfig.baseUrl.trim()
+            : undefined;
+        const dtype =
+          typeof params.model.headers?.["x-transformers-dtype"] === "string"
+            ? params.model.headers["x-transformers-dtype"]
+            : undefined;
+        activeSession.agent.streamFn = createTransformersStreamFn({
+          modelId: params.modelId,
+          dtype,
+          cacheDir,
+        });
       } else {
         // Force a stable streamFn reference so vitest can reliably mock @mariozechner/pi-ai.
         activeSession.agent.streamFn = streamSimple;
