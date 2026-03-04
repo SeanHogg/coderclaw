@@ -269,4 +269,230 @@ describe("tui command handlers", () => {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("shows usage hint when /spec is called without a goal", async () => {
+    const addSystem = vi.fn();
+    const requestRender = vi.fn();
+
+    const { handleCommand } = createCommandHandlers({
+      client: {} as never,
+      chatLog: { addSystem, hasUserMessages: () => false } as never,
+      tui: { requestRender } as never,
+      opts: {},
+      state: {
+        currentSessionKey: "agent:main:main",
+        activeChatRunId: null,
+        sessionInfo: {},
+        isConnected: true,
+      } as never,
+      deliverDefault: false,
+      openOverlay: vi.fn(),
+      closeOverlay: vi.fn(),
+      refreshSessionInfo: vi.fn(),
+      loadHistory: vi.fn(),
+      setSession: vi.fn(),
+      refreshAgents: vi.fn(),
+      abortActive: vi.fn(),
+      setActivityStatus: vi.fn(),
+      formatSessionKey: vi.fn(),
+      applySessionInfoFromPatch: vi.fn(),
+      noteLocalRunId: vi.fn(),
+    });
+
+    await handleCommand("/spec");
+
+    expect(addSystem).toHaveBeenCalledWith(expect.stringContaining("Usage: /spec <goal>"));
+  });
+
+  it("sends a planning workflow message when /spec is called with a goal", async () => {
+    const sendChat = vi.fn().mockResolvedValue({ runId: "r1" });
+    const addUser = vi.fn();
+    const addSystem = vi.fn();
+    const requestRender = vi.fn();
+
+    const { handleCommand } = createCommandHandlers({
+      client: { sendChat } as never,
+      chatLog: { addUser, addSystem, hasUserMessages: () => false } as never,
+      tui: { requestRender } as never,
+      opts: {},
+      state: {
+        currentSessionKey: "agent:main:main",
+        activeChatRunId: null,
+        sessionInfo: {},
+        isConnected: true,
+      } as never,
+      deliverDefault: false,
+      openOverlay: vi.fn(),
+      closeOverlay: vi.fn(),
+      refreshSessionInfo: vi.fn(),
+      loadHistory: vi.fn(),
+      setSession: vi.fn(),
+      refreshAgents: vi.fn(),
+      abortActive: vi.fn(),
+      setActivityStatus: vi.fn(),
+      formatSessionKey: vi.fn(),
+      applySessionInfoFromPatch: vi.fn(),
+      noteLocalRunId: vi.fn(),
+    });
+
+    await handleCommand("/spec Add real-time collaboration");
+
+    expect(sendChat).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("Add real-time collaboration") }),
+    );
+    expect(sendChat).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("planning") }),
+    );
+  });
+
+  it("sends a workflow status request when /workflow is called without an id", async () => {
+    const sendChat = vi.fn().mockResolvedValue({ runId: "r1" });
+    const addUser = vi.fn();
+    const addSystem = vi.fn();
+    const requestRender = vi.fn();
+
+    const { handleCommand } = createCommandHandlers({
+      client: { sendChat } as never,
+      chatLog: { addUser, addSystem, hasUserMessages: () => false } as never,
+      tui: { requestRender } as never,
+      opts: {},
+      state: {
+        currentSessionKey: "agent:main:main",
+        activeChatRunId: null,
+        sessionInfo: {},
+        isConnected: true,
+      } as never,
+      deliverDefault: false,
+      openOverlay: vi.fn(),
+      closeOverlay: vi.fn(),
+      refreshSessionInfo: vi.fn(),
+      loadHistory: vi.fn(),
+      setSession: vi.fn(),
+      refreshAgents: vi.fn(),
+      abortActive: vi.fn(),
+      setActivityStatus: vi.fn(),
+      formatSessionKey: vi.fn(),
+      applySessionInfoFromPatch: vi.fn(),
+      noteLocalRunId: vi.fn(),
+    });
+
+    await handleCommand("/workflow");
+
+    expect(sendChat).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("workflow_status") }),
+    );
+  });
+
+  it("includes the workflow id in the status request when /workflow <id> is called", async () => {
+    const sendChat = vi.fn().mockResolvedValue({ runId: "r1" });
+    const addUser = vi.fn();
+    const addSystem = vi.fn();
+    const requestRender = vi.fn();
+
+    const { handleCommand } = createCommandHandlers({
+      client: { sendChat } as never,
+      chatLog: { addUser, addSystem, hasUserMessages: () => false } as never,
+      tui: { requestRender } as never,
+      opts: {},
+      state: {
+        currentSessionKey: "agent:main:main",
+        activeChatRunId: null,
+        sessionInfo: {},
+        isConnected: true,
+      } as never,
+      deliverDefault: false,
+      openOverlay: vi.fn(),
+      closeOverlay: vi.fn(),
+      refreshSessionInfo: vi.fn(),
+      loadHistory: vi.fn(),
+      setSession: vi.fn(),
+      refreshAgents: vi.fn(),
+      abortActive: vi.fn(),
+      setActivityStatus: vi.fn(),
+      formatSessionKey: vi.fn(),
+      applySessionInfoFromPatch: vi.fn(),
+      noteLocalRunId: vi.fn(),
+    });
+
+    await handleCommand("/workflow abc-123");
+
+    expect(sendChat).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("abc-123") }),
+    );
+  });
+
+  it("shows handoff hint on /new when session has user messages", async () => {
+    const resetSession = vi.fn().mockResolvedValue({ ok: true });
+    const addSystem = vi.fn();
+    const requestRender = vi.fn();
+    const loadHistory = vi.fn().mockResolvedValue(undefined);
+
+    const { handleCommand } = createCommandHandlers({
+      client: { resetSession } as never,
+      chatLog: { addSystem, hasUserMessages: () => true } as never,
+      tui: { requestRender } as never,
+      opts: {},
+      state: {
+        currentSessionKey: "agent:main:main",
+        activeChatRunId: null,
+        sessionInfo: {},
+        isConnected: true,
+      } as never,
+      deliverDefault: false,
+      openOverlay: vi.fn(),
+      closeOverlay: vi.fn(),
+      refreshSessionInfo: vi.fn(),
+      loadHistory,
+      setSession: vi.fn(),
+      refreshAgents: vi.fn(),
+      abortActive: vi.fn(),
+      setActivityStatus: vi.fn(),
+      formatSessionKey: vi.fn(),
+      applySessionInfoFromPatch: vi.fn(),
+      noteLocalRunId: vi.fn(),
+    });
+
+    await handleCommand("/new");
+
+    expect(addSystem).toHaveBeenCalledWith(expect.stringContaining("/handoff"));
+    expect(resetSession).toHaveBeenCalledWith("agent:main:main", "new");
+  });
+
+  it("skips handoff hint on /new when session has no user messages", async () => {
+    const resetSession = vi.fn().mockResolvedValue({ ok: true });
+    const addSystem = vi.fn();
+    const requestRender = vi.fn();
+    const loadHistory = vi.fn().mockResolvedValue(undefined);
+
+    const { handleCommand } = createCommandHandlers({
+      client: { resetSession } as never,
+      chatLog: { addSystem, hasUserMessages: () => false } as never,
+      tui: { requestRender } as never,
+      opts: {},
+      state: {
+        currentSessionKey: "agent:main:main",
+        activeChatRunId: null,
+        sessionInfo: {},
+        isConnected: true,
+      } as never,
+      deliverDefault: false,
+      openOverlay: vi.fn(),
+      closeOverlay: vi.fn(),
+      refreshSessionInfo: vi.fn(),
+      loadHistory,
+      setSession: vi.fn(),
+      refreshAgents: vi.fn(),
+      abortActive: vi.fn(),
+      setActivityStatus: vi.fn(),
+      formatSessionKey: vi.fn(),
+      applySessionInfoFromPatch: vi.fn(),
+      noteLocalRunId: vi.fn(),
+    });
+
+    await handleCommand("/new");
+
+    const calls = addSystem.mock.calls.map((c: string[]) => c[0]);
+    expect(calls.some((msg: string) => msg.includes("/handoff"))).toBe(false);
+    expect(resetSession).toHaveBeenCalledWith("agent:main:main", "new");
+  });
 });

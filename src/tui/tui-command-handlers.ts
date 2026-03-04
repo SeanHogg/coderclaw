@@ -634,6 +634,14 @@ export function createCommandHandlers(context: CommandHandlerContext) {
       case "new":
       case "reset":
         try {
+          // Hint about saving a handoff when the session has had user activity
+          if (state.isConnected && chatLog.hasUserMessages()) {
+            chatLog.addSystem(
+              "Tip: Run /handoff first to save session context before resetting.",
+            );
+            tui.requestRender();
+          }
+
           // Clear token counts immediately to avoid stale display (#1523)
           state.sessionInfo.inputTokens = null;
           state.sessionInfo.outputTokens = null;
@@ -839,6 +847,50 @@ export function createCommandHandlers(context: CommandHandlerContext) {
         } catch (err) {
           chatLog.addSystem(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
         }
+        break;
+      }
+      case "compact":
+        // Explicit handler for /compact: forwards to gateway which interprets it
+        // as a compaction command. Passing raw preserves any extra instructions.
+        await sendMessage(raw);
+        break;
+      case "spec": {
+        const goal = args.trim();
+        if (!goal) {
+          chatLog.addSystem(
+            "Usage: /spec <goal>\nExample: /spec Add real-time collaboration feature",
+          );
+          break;
+        }
+        if (!state.isConnected) {
+          chatLog.addSystem("Gateway is disconnected. Reconnect to start a spec workflow.");
+          break;
+        }
+        await sendMessage(
+          [
+            `Please run a spec-driven planning workflow for the following goal: ${goal}`,
+            "",
+            "Use the orchestrate tool with workflow type 'planning' to produce:",
+            "1. A Product Requirements Document (PRD)",
+            "2. A detailed architecture specification",
+            "3. An ordered task list with dependencies",
+            "",
+            "Save all outputs to .coderClaw/planning/ when complete.",
+          ].join("\n"),
+        );
+        break;
+      }
+      case "workflow": {
+        const workflowId = args.trim();
+        if (!state.isConnected) {
+          chatLog.addSystem("Gateway is disconnected. Reconnect to check workflow status.");
+          break;
+        }
+        await sendMessage(
+          workflowId
+            ? `Please check the status of workflow ${workflowId} using the workflow_status tool and report the results.`
+            : "Please check the status of the latest workflow using the workflow_status tool and report the results.",
+        );
         break;
       }
       default:
