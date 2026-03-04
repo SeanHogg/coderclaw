@@ -383,3 +383,190 @@ After each gap is fixed, verify:
       delivers tasks via ClawRelayDO. Orchestrator routes `remote:<clawId>` steps to
       `dispatchToRemoteClaw`. `claw_fleet` tool exposes fleet to agents.
       _(Result streaming back to orchestrating claw still pending.)_
+
+---
+
+## Gap 7: No Spec-Driven Entry Point in TUI
+
+**Status**: ✅ RESOLVED (2026-03-04)
+
+**Problem**: Users had no TUI shortcut to trigger a spec-driven planning workflow. The
+`orchestrate` tool could run a planning workflow but only if the user knew to ask the
+agent explicitly. There was no `/spec` command.
+
+**Resolution**:
+
+- Added `case "spec":` to `src/tui/tui-command-handlers.ts`.
+  - Without args: shows `"Usage: /spec <goal>"`.
+  - With args: sends a structured message asking the agent to call `orchestrate` with
+    workflow `"planning"` and save outputs to `.coderClaw/planning/`.
+- Registered in `src/tui/commands.ts` (`getSlashCommands()` + `helpText()`).
+- Tests added in `src/tui/tui-command-handlers.test.ts` (2 tests).
+
+**Acceptance**:
+- `/spec` → usage hint
+- `/spec Add real-time collaboration` → agent runs planning workflow (PRD → arch → tasks)
+
+---
+
+## Gap 8: No Workflow Visibility in TUI
+
+**Status**: ✅ RESOLVED (2026-03-04)
+
+**Problem**: Users and the agent had no way to query workflow status from the TUI.
+The `workflow_status` tool existed for the agent to call, but there was no
+`/workflow` slash command to invoke it.
+
+**Resolution**:
+
+- Added `case "workflow":` to `src/tui/tui-command-handlers.ts`.
+  - Without args: asks agent to check the latest workflow using `workflow_status`.
+  - With an ID arg: asks agent to check that specific workflow.
+- Registered in `src/tui/commands.ts`.
+- Tests added in `src/tui/tui-command-handlers.test.ts` (2 tests).
+
+---
+
+## Gap 9: `/compact` Missing from Help
+
+**Status**: ✅ RESOLVED (2026-03-04)
+
+**Problem**: `/compact` was registered as a gateway "chat command" (available via the
+dynamic `listChatCommandsForConfig()` path) and worked via the `default` fallthrough
+in the command handler, but it was absent from the static `helpText()` output that
+users see with `/help`. This made it undiscoverable.
+
+**Resolution**:
+
+- Added `"/compact [instructions]"` to `helpText()` in `src/tui/commands.ts`.
+- Added explicit `case "compact":` handler in `src/tui/tui-command-handlers.ts` to
+  make intent clear and prevent accidental fallthrough behaviour changes.
+
+---
+
+## Gap 10: No Handoff Hint on Session Reset
+
+**Status**: ✅ RESOLVED (2026-03-04)
+
+**Problem**: When users typed `/new` or `/reset`, the session was immediately cleared
+with no reminder to save context. Users routinely lost session summaries, decisions,
+and next steps. Fully automatic save was not reliable (agent must respond before the
+session is cleared), so a UX hint was the correct closure for this gap.
+
+**Resolution**:
+
+- Added `hasUserMessages(): boolean` to `ChatLog` (`src/tui/components/chat-log.ts`).
+  Counts `addUser()` calls since last `clearAll()`.
+- In `case "new"/"reset"` in `src/tui/tui-command-handlers.ts`: when the gateway is
+  connected and `chatLog.hasUserMessages()` is true, shows:
+  _"Tip: Run /handoff first to save session context before resetting."_
+- Tests added in `src/tui/tui-command-handlers.test.ts` (2 tests: with and without activity).
+
+---
+
+## Gap 11: Knowledge Loop Produced Only File Lists (No Semantic Labels)
+
+**Status**: ✅ RESOLVED (2026-03-04)
+
+**Problem**: `.coderClaw/memory/YYYY-MM-DD.md` entries listed files created/edited and
+tools used, but contained no human-readable summary of *what* was accomplished. Memory
+queries returned raw lists that were hard for agents and humans to interpret at a glance.
+
+**Resolution**:
+
+- Added `deriveActivitySummary({ created, edited, tools }): string` to
+  `src/infra/knowledge-loop.ts` (exported for testability).
+- Applies heuristics in priority order to produce a one-line English label:
+  1. Multi-agent workflow execution
+  2. Code review / analysis
+  3. Test suite created / updated
+  4. Codebase exploration (read-only)
+  5. Feature implementation (new files + edits)
+  6. New files only
+  7. Code modifications only
+  8. Agent activity (no file changes)
+- Result appended as `**Summary**: …` in each run's memory entry.
+- No model call required — pure heuristic, zero latency overhead.
+- 11 unit tests added in `src/infra/knowledge-loop.test.ts`.
+
+---
+
+## Open Gaps (Phase 1)
+
+### I) Remote Task Result Streaming
+
+**Current**: `POST /api/claws/:id/forward` is fire-and-forget. Dependent orchestrator
+steps that use `remote:<clawId>` roles cannot receive output from the remote execution.
+
+**Required**:
+
+- A result-streaming channel from target claw back to orchestrating claw.
+- Options: (a) reverse HTTP callback, (b) WS result frame via `ClawRelayDO`,
+  (c) polling a result endpoint added to coderClawLink.
+- Orchestrator should surface result in `task.output` so dependent steps can use it.
+
+**Acceptance criteria**:
+
+- `orchestrate` workflow with `remote:<clawId>` step completes with non-empty `output`.
+- Dependent steps receive the remote output as `input`.
+
+**Requires**: coderClawLink API change — see `CODERCLAW_LINK_GAPS.md`.
+
+---
+
+### J) Capability-Based Claw Routing
+
+**Current**: Orchestrator `remote:<clawId>` steps require the caller to specify an
+explicit claw ID. There is no auto-selection of the best claw by matching required
+capabilities.
+
+**Required**:
+
+- Extend `WorkflowStep` with optional `requiredCapabilities: string[]`.
+- At dispatch time, call `claw_fleet` to find claws with matching capabilities.
+- Route to the highest-priority online match; fall back to local if none found.
+
+**Acceptance criteria**:
+
+- `orchestrate` step with `role: "remote:auto"` and `requiredCapabilities: ["gpu"]`
+  routes to a claw that reports `"gpu"` in its capabilities heartbeat.
+
+---
+
+### K) Semantic Architecture.md Auto-Update
+
+**Current**: `.coderClaw/architecture.md` is updated manually. The knowledge loop
+only writes to daily memory files.
+
+**Required**:
+
+- After runs that exceed a configurable threshold of structural edits (e.g., ≥ 3
+  new files or ≥ 5 edited files), trigger a targeted `architecture.md` refresh
+  via a subagent using the `documentation-agent` role.
+- Add `/knowledge update` TUI command to force an immediate update.
+
+**Acceptance criteria**:
+
+- A feature-implementation run that creates ≥ 3 files triggers an arch doc update.
+- `/knowledge update` produces an updated `.coderClaw/architecture.md`.
+
+---
+
+## Updated Priority Order
+
+| Priority | Gap  | Item                               | Status   |
+| -------- | ---- | ---------------------------------- | -------- |
+| ✅       | -1.1 | Wire executeWorkflow               | RESOLVED |
+| ✅       | -1.2 | Wire agent roles                   | RESOLVED |
+| ✅       | -1.3 | Session handoff save/load          | RESOLVED |
+| ✅       | -1.4 | Workflow persistence               | RESOLVED |
+| ✅       | -1.5 | Knowledge loop                     | RESOLVED |
+| ✅       | -1.6 | Claw-to-claw mesh                  | RESOLVED |
+| ✅       | 7    | `/spec` TUI command                | RESOLVED |
+| ✅       | 8    | `/workflow` TUI command            | RESOLVED |
+| ✅       | 9    | `/compact` in help                 | RESOLVED |
+| ✅       | 10   | Handoff hint on /new               | RESOLVED |
+| ✅       | 11   | Semantic knowledge summaries       | RESOLVED |
+| 🔲       | I    | Remote task result streaming       | OPEN     |
+| 🔲       | J    | Capability-based claw routing      | OPEN     |
+| 🔲       | K    | Architecture.md auto-update        | OPEN     |

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+
+- `/spec <goal>` TUI slash command: triggers spec-driven planning workflow (PRD → architecture spec → ordered task list) via the `orchestrate` tool; outputs saved to `.coderClaw/planning/`
+- `/workflow [id]` TUI slash command: queries orchestrator workflow status from TUI using the `workflow_status` tool; accepts optional workflow ID
+- `/compact [instructions]` explicit TUI handler and added to `/help` output (was already functional via gateway fallthrough but undiscoverable)
+- `ChatLog.hasUserMessages()`: tracks whether the current session has had user messages since the last `clearAll()`; used to show handoff hint on `/new`
+- Handoff hint on `/new`/`/reset`: when the gateway is connected and the session has user messages, a tip is shown reminding users to run `/handoff` before resetting
+- `deriveActivitySummary()` in `src/infra/knowledge-loop.ts`: produces a one-line semantic label per agent run based on tool-usage heuristics (no model call); appended as `**Summary**:` in `.coderClaw/memory/YYYY-MM-DD.md` entries
+- `src/infra/knowledge-loop.test.ts`: 11 unit tests for `deriveActivitySummary`
+- `.coderClaw/planning/CODERCLAW_LINK_GAPS.md`: comprehensive feature gap analysis for the `SeanHogg/coderClawLink` backend/portal, covering 13 features across P0–P3 priorities
+
+### Updated
+
+- `.coderClaw/architecture.md`: full rewrite reflecting Phase 0 completions, new TUI commands, semantic knowledge loop, updated system diagram, new data flows (spec-driven, multi-claw)
+- `.coderClaw/planning/CAPABILITY_GAPS.md`: added Gaps 7–11 (all resolved) and Open Gaps I–K with acceptance criteria
+- `.coderClaw/planning/ROADMAP.md`: added Phase 0 (complete) and Phase 1 open items with canonical code paths
+
 ### Optimized
 
 - Build output footprint: enabled whitespace and syntax minification in `tsdown.config.ts` for all dist entries, reducing bundle sizes without mangling identifier names (preserves stack traces, plugin discovery, and dynamic property access)
