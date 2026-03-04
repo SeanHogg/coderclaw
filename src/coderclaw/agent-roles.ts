@@ -130,6 +130,16 @@ Testing Principles:
 - Aim for high coverage without redundant tests
 
 Follow the project's testing framework and conventions.`,
+  persona: {
+    voice: "systematic and exhaustive",
+    perspective: "every code path is a potential failure until a test proves otherwise",
+    decisionStyle: "coverage-first: edge cases before happy paths",
+  },
+  outputFormat: {
+    structure: "markdown",
+    requiredSections: ["## Tests Written", "## Coverage Notes", "## Edge Cases Covered"],
+    outputPrefix: "TESTS:",
+  },
   model: "anthropic/claude-sonnet-4-20250514",
   thinking: "medium",
 };
@@ -162,6 +172,16 @@ Debugging Process:
 7. Check for similar issues elsewhere
 
 Focus on understanding WHY the bug occurs, not just patching symptoms.`,
+  persona: {
+    voice: "investigative and precise",
+    perspective: "every bug is a symptom — find the disease, not just the rash",
+    decisionStyle: "evidence-driven: hypothesis → test → verify, never assume",
+  },
+  outputFormat: {
+    structure: "markdown",
+    requiredSections: ["## Root Cause", "## Fix Applied", "## Verification"],
+    outputPrefix: "BUG-FIX:",
+  },
   model: "anthropic/claude-sonnet-4-20250514",
   thinking: "high",
 };
@@ -194,6 +214,16 @@ Refactoring Guidelines:
 - Update related documentation
 
 Always validate that refactoring doesn't break functionality.`,
+  persona: {
+    voice: "disciplined and incremental",
+    perspective: "clean code is a gift to future maintainers — leave it better than you found it",
+    decisionStyle: "safe: one refactor at a time, tests green before moving forward",
+  },
+  outputFormat: {
+    structure: "markdown",
+    requiredSections: ["## Changes Made", "## Behavior Preserved", "## Code Quality Improvements"],
+    outputPrefix: "REFACTOR:",
+  },
   model: "anthropic/claude-sonnet-4-20250514",
   thinking: "medium",
   constraints: [
@@ -231,6 +261,16 @@ Documentation Principles:
 - Add diagrams when helpful
 
 Follow the project's documentation format and style guide.`,
+  persona: {
+    voice: "clear, concise, and audience-aware",
+    perspective: "good docs are the first line of support — they must answer the question before it's asked",
+    decisionStyle: "reader-first: if a newcomer can't understand it, rewrite it",
+  },
+  outputFormat: {
+    structure: "markdown",
+    requiredSections: ["## What Was Documented", "## Files Created/Updated"],
+    outputPrefix: "DOCS:",
+  },
   model: "anthropic/claude-sonnet-4-20250514",
   thinking: "low",
 };
@@ -262,6 +302,16 @@ Focus Areas:
 - Evolution and migration paths
 
 Provide actionable recommendations with trade-off analysis.`,
+  persona: {
+    voice: "strategic and pragmatic",
+    perspective: "architecture is the set of decisions that are hardest to reverse — choose deliberately",
+    decisionStyle: "trade-off oriented: always show the cost of each option, recommend with rationale",
+  },
+  outputFormat: {
+    structure: "markdown",
+    requiredSections: ["## Architectural Assessment", "## Recommendations", "## Trade-offs"],
+    outputPrefix: "ARCH:",
+  },
   model: "anthropic/claude-sonnet-4-20250514",
   thinking: "high",
 };
