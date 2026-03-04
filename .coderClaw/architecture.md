@@ -220,7 +220,7 @@ Human Developer
 
 ## Capability Status (as of 2026-03-04)
 
-### Phase -1: Core Infrastructure ✅ Complete
+### ✅ Core Infrastructure — Complete
 
 1. ✅ `executeWorkflow()` wired — all 6 workflow types execute end-to-end
 2. ✅ `agent-roles.ts` wired — 7 built-in + custom YAML roles enforced at spawn
@@ -230,7 +230,7 @@ Human Developer
 6. ✅ Claw mesh — fleet discovery, heartbeat, `/forward` dispatch, `claw_fleet` tool,
    `remote:<clawId>` orchestrator routing
 
-### Phase 0: TUI UX & Context Quality ✅ Complete (2026-03-04)
+### ✅ TUI UX & Context Quality — Complete
 
 7. ✅ `/spec <goal>` — triggers spec-driven planning workflow (PRD → arch → tasks) from TUI
 8. ✅ `/workflow [id]` — queries workflow status from TUI
@@ -258,14 +258,27 @@ Human Developer
 - 🔲 Tab autocomplete / FIM proxy endpoint
 - 🔲 Session auto-checkpoint on exit
 - 🔲 Persona profiles (`.coderClaw/personas/*.yaml`)
+### ✅ Distributed Runtime — Complete
+
+12. ✅ Transport abstraction layer — `LocalTransportAdapter` + `ClawLinkTransportAdapter`
+13. ✅ Distributed task lifecycle — formal state machine, audit trail, persistence
+14. ✅ Identity & security model — RBAC, device trust, granular policy enforcement
+15. ✅ Capability-based claw routing — `remote:auto` / `remote:auto[cap1,cap2]` in orchestrator
+
+### 🔲 Open Items
+
+- Remote task result streaming (claw-to-claw result channel — requires coderClawLink relay frame)
+- Semantic knowledge synthesis (architecture.md auto-update after structural edits)
+- coderClawLink: workflow/spec APIs, execution WebSocket streaming, spec portal UI
 
 ---
 
-## New Subsystems (Phase 0, 2026-03-04)
+## New Subsystems
 
 ### `/spec` Command (`src/tui/tui-command-handlers.ts`)
 
 Triggers a three-step planning workflow via the `orchestrate` tool:
+
 1. Architecture Advisor writes PRD
 2. Architecture Advisor writes architecture spec
 3. Architecture Advisor decomposes into ordered task list with dependencies
@@ -292,7 +305,7 @@ call required. Priority order:
 
 1. Multi-agent workflow execution (orchestrate/workflow_status tools present)
 2. Code review / analysis (git_history / code_analysis / project_knowledge)
-3. Test suite created / updated (*.test.* or *.spec.* files touched)
+3. Test suite created / updated (_.test._ or _.spec._ files touched)
 4. Codebase exploration (read-only grep/glob/view, no bash, no file changes)
 5. Feature implementation (new files + edits)
 6. New file creation only
@@ -363,6 +376,8 @@ targeting the `SeanHogg/coderClawLink` repository.
 
 ## Data Flow: Multi-Claw Orchestration
 
+### Explicit Target (`remote:<clawId>`)
+
 ```
 1. Agent calls orchestrate with role: "remote:<targetClawId>"
 2. Orchestrator calls dispatchToRemoteClaw(targetClawId, task)
@@ -371,5 +386,16 @@ targeting the `SeanHogg/coderClawLink` repository.
 4. coderClawLink receives request → delivers via ClawRelayDO to target upstream WS
 5. Target claw receives { type: "remote.task", task: "…" }
 6. Target executes as a local chat message
-7. [OPEN] Result streaming back to orchestrating claw — not yet implemented
+7. [OPEN] Result streaming back to orchestrating claw — requires coderClawLink relay frame
+```
+
+### Capability-Based Auto-Routing (`remote:auto` or `remote:auto[cap1,cap2]`)
+
+```
+1. Agent calls orchestrate with role: "remote:auto" or "remote:auto[gpu,high-memory]"
+2. Orchestrator calls selectClawByCapability(opts, requiredCaps)
+3. GET /api/claws/fleet?from=…&key=… — fetch all online peer claws
+4. Filter to claws satisfying ALL required capabilities; pick highest-scoring
+5. If no match → workflow step fails with descriptive error
+6. Proceed with resolved clawId as if "remote:<selectedId>" was specified
 ```
