@@ -1,251 +1,312 @@
 # CoderClaw Feature Gap Analysis
 
 > Last updated: 2026-03-04  
-> Scope: Agent → Orchestrator gap analysis vs. market leaders
+> Primary competitive focus: **Cursor** and **Continue.dev**  
+> See also: [Business Roadmap](BUSINESS_ROADMAP.md)
 
-## Market Landscape
+## Strategic Objective
+
+CoderClaw's immediate competitive goal is to **out-feature Cursor and Continue.dev** while
+maintaining our open-source, self-hosted, model-agnostic advantage. These two tools
+represent the largest share of the AI coding assistant market and the developers most
+likely to switch to CoderClaw.
+
+- **Cursor** ($20/user/month, closed source): IDE fork of VS Code with Composer multi-file
+  agent, semantic codebase indexing, MCP support, and a slick diff-acceptance UX.
+- **Continue.dev** (free, MIT): VS Code + JetBrains extension, MCP-first, local model
+  support, fully customisable, but single-agent and no orchestration.
+
+Our thesis: CoderClaw already wins on orchestration depth, self-hosting, and multi-channel
+access. We need to close five specific gaps before those advantages become irrelevant.
+
+---
+
+## Head-to-Head: CoderClaw vs. Cursor vs. Continue.dev
+
+| Feature | **CoderClaw** | **Cursor** | **Continue.dev** |
+|---------|--------------|------------|-----------------|
+| **Price** | Free (MIT) | $20/user/month | Free (MIT) |
+| **Self-hosted** | ✅ Full | ❌ Cloud only | ✅ Extension |
+| **Any model provider** | ✅ 30+ providers | ⚠️ Limited list | ✅ Any (Ollama, API) |
+| **MCP support** | ⚠️ consume via mcporter | ✅ Native (full) | ✅ Native (full) |
+| **Expose tools as MCP server** | 🔲 Planned P0-4 | ❌ | ❌ |
+| **Codebase semantic search** | 🔲 Planned P0 | ✅ `@codebase` | ✅ `@codebase` |
+| **Inline diff / accept-reject** | 🔲 Planned P1 | ✅ Composer panel | ✅ `⌘K` diff |
+| **Tab autocomplete** | ❌ | ✅ Native | ✅ Native |
+| **IDE extension** | 🔲 Planned | ✅ VS Code fork | ✅ VS Code + JetBrains |
+| **Multi-agent orchestration** | ✅ 7 roles + DAG | ❌ Single agent | ❌ Single agent |
+| **Planning workflow (PRD→Tasks)** | ✅ `/spec` | ❌ | ❌ |
+| **Adversarial review pass** | ✅ Built-in | ❌ | ❌ |
+| **Workflow persistence** | ✅ YAML checkpoint | ❌ | ❌ |
+| **Persistent project memory** | ✅ `.coderClaw/` | ⚠️ In-session only | ⚠️ In-session only |
+| **Session handoffs** | ✅ `/handoff` | ❌ | ❌ |
+| **Claw-to-claw delegation** | ✅ `remote:<clawId>` | ❌ | ❌ |
+| **Works in WhatsApp/Telegram/Slack** | ✅ | ❌ | ❌ |
+| **AST-level code analysis** | ✅ | ⚠️ Basic RAG | ⚠️ Basic RAG |
+| **Live workflow dashboard** | 🔲 Planned P0 | ❌ | ❌ |
+| **Git-aware context (blame/hotspots)** | ✅ `git_history` | ⚠️ Basic diff | ❌ |
+| **RBAC + audit trails** | ✅ | ❌ | ❌ |
+| **Open source** | ✅ MIT | ❌ | ✅ MIT |
+
+**Legend**: ✅ Available · ⚠️ Partial · ❌ Not available · 🔲 Planned
+
+---
+
+## Priority Gap Analysis: What We Must Close
+
+### Gap 1 — MCP: Consume AND Expose (P0)
+
+**What Cursor and Continue.dev do:**  
+Both tools treat MCP as a first-class citizen. Cursor supports MCP tool calls in Composer
+agent mode. Continue.dev was built MCP-first and any MCP server can supply context or
+actions. Developers who use Cursor/Continue expect their existing MCP servers to just work.
+
+**What CoderClaw does today:**  
+CoderClaw can *consume* MCP servers via the `mcporter` bridge, but there is no dedicated
+integration path and it is not surfaced prominently. More critically, CoderClaw does
+**not expose its own tools as an MCP server**, so Cursor and Continue.dev users cannot
+call `project_knowledge`, `codebase_search`, or `git_history` from inside their IDE.
+
+**Why this matters for competing with Cursor/Continue:**  
+Developers migrating to CoderClaw want their Cursor `@codebase` context and their
+Continue.dev MCP servers to keep working. Without a first-class MCP story on both sides
+(consume + provide), CoderClaw feels like a regression.
+
+**Required work:**
+
+1. **MCP Server module** (`src/mcp-server/`): expose CoderClaw tools at
+   `http://localhost:18789/mcp` with a standards-compliant manifest + call endpoint.
+   - Tools: `project_knowledge`, `codebase_search`, `git_history`, `workflow_status`, `claw_fleet`
+   - Auth: API key via `Authorization: Bearer <key>` header
+   - Streaming: SSE for long-running tools
+
+2. **First-class MCP consumption**: add `mcpServers` config key; on gateway startup,
+   connect to listed MCP servers and register their tools in the tool registry —
+   available to all agent roles automatically.
+
+3. **Docs**: "Connect CoderClaw to Cursor / Continue.dev as an MCP server" guide.
+
+**Estimate**: M (4–6 days)  
+**Owner**: CoderClaw core (`src/mcp-server/`, `src/gateway/`)
+
+---
+
+### Gap 2 — Codebase Semantic Search (`@codebase`) (P0)
+
+**What Cursor and Continue.dev do:**  
+- Cursor: `@codebase` builds a vector index of the project; Composer pre-fetches relevant
+  files automatically based on the user's request before sending to the model.
+- Continue.dev: `@codebase` and `@file` context providers use embeddings (via Ollama or
+  remote) for semantic retrieval.
+
+**What CoderClaw does today:**  
+`project_knowledge` queries `.coderClaw/memory/` with keyword matching. The
+`memory-lancedb` extension exists but is not wired into any query path. Agents are
+given a task and must call `grep`/`glob` tools themselves to find relevant files —
+wasting context budget and producing inconsistent results.
+
+**Why this matters for competing with Cursor/Continue:**  
+Semantic retrieval is the single most visible quality difference between basic and
+advanced AI coding tools. Users switching from Cursor immediately notice when the agent
+doesn't "just know" about the right files.
+
+**Required work:**
+
+1. **Wire `memory-lancedb` into `project_knowledge`**: when `type: "codebase"` query is
+   made, embed the query and return top-K results from LanceDB.
+
+2. **New `codebase_search` tool**: `{ query: string, topK?: number }` → returns ranked
+   list of `{ filePath, snippet, score }`. Available to all agent roles.
+
+3. **Semantic auto-context injection**: in `spawnSubagentDirect()`, before building the
+   system prompt, run a `codebase_search` with the task description and inject top-5
+   files as context (similar to Cursor Composer's automatic file inclusion).
+
+4. **Indexing CLI command**: `coderclaw index` — builds/refreshes the LanceDB index for
+   the current project. Auto-runs on `coderclaw init`.
+
+5. **Expose via MCP** (see Gap 1): so Cursor and Continue.dev users get CoderClaw's
+   richer semantic index as their `@codebase` context.
+
+**Estimate**: M (5–7 days)  
+**Owner**: `src/coderclaw/tools/`, `extensions/memory-lancedb/`, `src/agents/subagent-spawn.ts`
+
+---
+
+### Gap 3 — Inline Diff / Accept-Reject Pair Programming (P1)
+
+**What Cursor and Continue.dev do:**  
+- Cursor Composer: all file changes appear in a side panel as diffs; every change is
+  staged with Accept/Reject controls. Nothing is written until the user approves.
+- Continue.dev: `⌘K` inline edit shows a diff overlay in the editor; user presses
+  `⌘⇧↩` to accept, `⌘⇧⌫` to reject.
+- Aider (the CLI benchmark): shows unified diffs before applying and asks confirmation
+  on each hunk.
+
+**What CoderClaw does today:**  
+`edit` and `create` tools write files immediately. There is no staging, no diff preview,
+and no per-file accept/reject. The developer must run `git diff` after the fact to see
+what changed.
+
+**Why this matters for competing with Cursor/Continue:**  
+This is the #1 UX friction point for developers migrating from Cursor. The "accept this
+change" interaction is muscle memory for Cursor users. Without it, CoderClaw feels
+dangerous for production codebases.
+
+**Required work:**
+
+1. **Staged edit buffer** (`src/coderclaw/staged-edits.ts`): in-memory map of
+   `filePath → { originalContent, proposedContent, toolCallId }`.
+
+2. **Modify `edit`/`create` tools**: when `CODERCLAW_STAGED=true` (env var or config),
+   write to the staged buffer instead of disk; return a `"staged"` confirmation to the agent.
+
+3. **TUI commands**:
+   - `/diff` — show all staged changes as unified diff
+   - `/diff <file>` — show diff for one file
+   - `/accept` — apply all staged changes to disk
+   - `/accept <file>` — apply one file
+   - `/reject` — discard all staged changes
+   - `/reject <file>` — discard one file
+
+4. **coderClawLink integration**: staged diffs can be posted to the portal for remote
+   review (P1-4 in CODERCLAW_LINK_GAPS.md).
+
+**Estimate**: M (4–5 days)  
+**Owner**: `src/agents/tools/`, `src/tui/commands.ts`, `src/tui/tui-command-handlers.ts`
+
+---
+
+### Gap 4 — VS Code / IDE Extension (P1)
+
+**What Cursor and Continue.dev do:**  
+- Cursor *is* VS Code (fork). All interaction happens in the IDE.
+- Continue.dev is a VS Code + JetBrains extension. Developers install it and work in
+  their existing editor.
+
+**What CoderClaw does today:**  
+CoderClaw is terminal-first (TUI) or messaging-channel-based. There is no VS Code
+extension. Developers who live in VS Code must switch to a terminal to use CoderClaw.
+
+**Why this matters for competing with Cursor/Continue:**  
+IDE presence is table stakes for competing in this market. Without a VS Code extension,
+CoderClaw is inaccessible to the 70%+ of developers who primarily work in VS Code.
+
+**Required work (phased):**
+
+**Phase A — VS Code Extension (sidebar + inline diff)**
+1. New package `extensions/vscode/` — VS Code extension (TypeScript, `@types/vscode`)
+2. Extension connects to local gateway via WebSocket (`ws://127.0.0.1:18789`)
+3. Sidebar panel: chat with CoderClaw agent, workflow status, fleet view
+4. Inline diff decoration: when staged edits exist, show diff gutter decorations with
+   codelens "Accept / Reject" per hunk
+5. Command palette: `CoderClaw: Run Workflow`, `CoderClaw: Run /spec`, `CoderClaw: Accept All Diffs`
+
+**Phase B — Language Server / `@codebase` Context**
+6. CoderClaw language server: exposes `codebase_search` as an LSP workspace symbol provider
+7. `@codebase` context in chat: automatically retrieves semantically relevant snippets
+
+**Estimate**: L (2–3 weeks for Phase A)  
+**Owner**: New `extensions/vscode/` package
+
+---
+
+### Gap 5 — Tab Autocomplete (P2)
+
+**What Cursor and Continue.dev do:**  
+- Cursor: fast ghost-text tab completion powered by a small fill-in-the-middle model.
+- Continue.dev: configurable tab autocomplete with support for local models (StarCoder2,
+  DeepSeek-Coder, Codestral) via Ollama or any FIM-compatible API.
+
+**What CoderClaw does today:**  
+No autocomplete. CoderClaw operates at the task/workflow level, not the keystroke level.
+
+**Why this matters for competing with Cursor/Continue:**  
+Tab completion keeps developers in a productive flow state inside the editor. Without it,
+developers retain their Cursor subscription alongside CoderClaw for day-to-day coding
+even if they use CoderClaw for orchestration. This prevents full switching.
+
+**Required work:**
+
+1. **FIM proxy endpoint** on local gateway: `POST /api/complete` accepting
+   `{ prefix, suffix, maxTokens, stopSequences }` → streams completion tokens.
+2. Route to a configured FIM model (Codestral, DeepSeek-Coder via Ollama, or any
+   provider that supports fill-in-the-middle).
+3. VS Code extension (Gap 4): register as an inline completion provider using this endpoint.
+4. Continue.dev compatibility: expose as a Continue-compatible autocomplete provider
+   so existing Continue.dev users can point their tab completion at CoderClaw.
+
+**Estimate**: M (3–4 days once VS Code extension exists)  
+**Owner**: `src/gateway/`, `extensions/vscode/`
+
+---
+
+## Market Landscape (Full)
 
 ### Tier 1: IDE-Embedded Assistants
 
-| Tool | Model | Self-hosted | Multi-agent | Orchestration | MCP | Pair Programming | Open Source |
-|------|-------|-------------|-------------|---------------|-----|-----------------|-------------|
-| **Cursor** | GPT-4o / Claude 3.5 | ❌ | ❌ | ❌ | ✅ | ✅ Composer | ❌ |
-| **Windsurf (Codeium)** | GPT-4o / Claude | ❌ | ❌ | ❌ | ✅ | ✅ Cascade | ❌ |
-| **GitHub Copilot** | GPT-4o / Claude | ❌ | ❌ | ❌ | ❌ | ✅ Chat | ❌ |
-| **Continue.dev** | Any | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ MIT |
-| **Tabnine** | Tabnine | ❌ | ❌ | ❌ | ❌ | ✅ Chat | ❌ |
+| Tool | Price | Self-hosted | Multi-agent | Orchestration | MCP | Diff UX | Open Source |
+|------|-------|-------------|-------------|---------------|-----|---------|-------------|
+| **Cursor** | $20/user/mo | ❌ | ❌ | ❌ | ✅ Native | ✅ Composer | ❌ |
+| **Windsurf (Codeium)** | $15/user/mo | ❌ | ❌ | ❌ | ✅ | ✅ Cascade | ❌ |
+| **GitHub Copilot** | $19/user/mo | ❌ | ❌ | ❌ | ❌ | ⚠️ Inline | ❌ |
+| **Continue.dev** | Free | ✅ | ❌ | ❌ | ✅ Native | ✅ `⌘K` | ✅ MIT |
+| **Tabnine** | $12/user/mo | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### Tier 2: Agentic CLI / Terminal Tools
 
-| Tool | Model | Self-hosted | Multi-agent | Orchestration | MCP | Pair Programming | Open Source |
-|------|-------|-------------|-------------|---------------|-----|-----------------|-------------|
-| **Claude Code** | Claude | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| **Aider** | Any (GPT/Claude/Ollama) | ✅ | ❌ | ❌ | ❌ | ✅ chat mode | ✅ Apache 2 |
-| **Goose** (Block) | Any | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ Apache 2 |
-| **OpenHands (SWE-agent)** | Any | ✅ | ❌ | ⚠️ basic | ❌ | ❌ | ✅ MIT |
-| **Plandex** | GPT-4o | ✅ | ❌ | ⚠️ plan-only | ❌ | ⚠️ plan only | ✅ AGPL |
-| **GPT Engineer** | GPT-4o | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ MIT |
-| **Mentat** | GPT-4o | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ MIT |
+| Tool | Price | Self-hosted | Multi-agent | Orchestration | MCP | Open Source |
+|------|-------|-------------|-------------|---------------|-----|-------------|
+| **Claude Code** | Usage-based | ❌ | ❌ | ❌ | ✅ | ❌ |
+| **Aider** | Free | ✅ | ❌ | ❌ | ❌ | ✅ Apache 2 |
+| **Goose** (Block) | Free | ✅ | ❌ | ❌ | ✅ | ✅ Apache 2 |
+| **OpenHands** | Free | ✅ | ❌ | ⚠️ basic | ❌ | ✅ MIT |
+| **Plandex** | Free/Usage | ✅ | ❌ | ⚠️ plan-only | ❌ | ✅ AGPL |
 
-### Tier 3: Autonomous Agents / SWE Bots
+### Tier 3: Autonomous Agents
 
-| Tool | Model | Self-hosted | Multi-agent | Orchestration | MCP | Pair Programming | Open Source |
-|------|-------|-------------|-------------|---------------|-----|-----------------|-------------|
-| **Devin** (Cognition AI) | Proprietary | ❌ | ❌ | ✅ (black box) | ❌ | ✅ | ❌ |
-| **SWE-agent** | GPT-4o | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ MIT |
-| **AutoCodeRover** | GPT-4o | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| **OpenCopilot** | Any | ✅ | ❌ | ⚠️ basic | ❌ | ❌ | ✅ MIT |
+| Tool | Price | Self-hosted | Multi-agent | Orchestration | Open Source |
+|------|-------|-------------|-------------|---------------|-------------|
+| **Devin** | $500/mo | ❌ | ❌ | ✅ (black box) | ❌ |
+| **SWE-agent** | Free | ✅ | ❌ | ❌ | ✅ MIT |
 
-### CoderClaw Position
+### CoderClaw Position (current → target)
 
-| Tool | Model | Self-hosted | Multi-agent | Orchestration | MCP | Pair Programming | Open Source |
-|------|-------|-------------|-------------|---------------|-----|-----------------|-------------|
-| **CoderClaw** | Any (30+ providers) | ✅ | ✅ 7 roles | ✅ DAG-based | ✅ via mcporter | ✅ TUI + channels | ✅ MIT |
+| Tool | Price | Self-hosted | Multi-agent | Orchestration | MCP | Diff UX | IDE ext | Open Source |
+|------|-------|-------------|-------------|---------------|-----|---------|---------|-------------|
+| **CoderClaw today** | Free | ✅ | ✅ 7 roles | ✅ DAG | ⚠️ mcporter | ❌ | ❌ | ✅ MIT |
+| **CoderClaw target** | Free + Pro | ✅ | ✅ 7 roles | ✅ DAG | ✅ Native + server | ✅ staged | ✅ VS Code | ✅ MIT |
 
 ---
 
-## Feature Gap Analysis: Agent → Orchestrator
+## Competitive Differentiation: What CoderClaw Already Wins On
 
-### What Competitors Have That CoderClaw Lacks
+These are genuine, durable advantages over Cursor and Continue.dev today:
 
-#### 1. Orchestration Workspace UI (Live Agent Dashboard)
-
-**Competitors with this:**
-- **Devin**: Shows a live browser + terminal panel beside the chat, with every action visible in real time
-- **Windsurf Cascade**: Shows step-by-step AI actions with live diffs and terminal output
-- **Cursor Composer**: Tabbed workspace showing file changes, terminal output, and accepted/rejected diffs
-- **OpenHands**: Web UI shows agent thinking, bash commands, file edits, and browser actions live
-
-**CoderClaw Gap:**
-- Workflows execute in TUI as text output; no graphical DAG of running/completed/failed tasks
-- No live agent persona display (which role is currently executing, what it is doing, estimated completion)
-- No diff preview panel — changes are applied silently
-- No split-pane: chat left, agent actions right
-
-**Required:**
-- `coderClawLink` portal: live workflow DAG view with per-task status, elapsed time, and output preview
-- WebSocket relay frames: `workflow.update`, `task.started`, `task.output_delta`, `task.completed`
-- TUI: `pane` command to toggle between chat and live workflow view
+| Feature | Advantage vs. Cursor | Advantage vs. Continue.dev |
+|---------|---------------------|---------------------------|
+| **Multi-agent orchestration** | Cursor uses one agent; CoderClaw uses 7 specialised roles in a DAG | Same — no orchestration in Continue |
+| **Adversarial review pass** | Not available in Cursor | Not available in Continue |
+| **Planning workflow (/spec)** | Cursor has no PRD → arch → task decomposition | Continue has no planning workflow |
+| **Workflow persistence** | Cursor loses workflow state on close | Continue has no workflow concept |
+| **Post-task memory loop** | Cursor has no persistent project memory | Continue's context is in-session only |
+| **Claw mesh (distributed)** | No distributed delegation in Cursor | Not available in Continue |
+| **Works in WhatsApp/Telegram** | Cursor is IDE-only | Continue is IDE-only |
+| **Self-hosted, open source** | Cursor is closed, cloud-required | Continue is open but IDE-tethered |
+| **AST + git-history analysis** | Cursor has basic RAG, no AST | Continue has no AST analysis |
+| **Any model, no lock-in** | Cursor limits model choices | Continue supports any model ✅ (same advantage) |
 
 ---
 
-#### 2. MCP Context Semantic Search
+## Implementation Priority (Cursor + Continue Focus)
 
-**Competitors with this:**
-- **Cursor**: Context window uses vector search over project files (Ctrl+K / `@codebase`)
-- **Windsurf**: "Cascade" automatically picks relevant files via semantic retrieval
-- **Claude Code**: `@` file pinning + `--search` (grep-style, not semantic)
-- **Continue.dev**: Full MCP integration with semantic codebase indexing
-- **Goose**: MCP-first tool platform; any MCP server can supply context
-
-**CoderClaw Gap:**
-- `project_knowledge` tool does keyword search over `.coderClaw/memory/` files only
-- No vector-based semantic search over project source files
-- `mcporter` provides MCP bridge but is not wired into the context injection pipeline
-- Agents cannot ask "find all files related to authentication" and get semantically relevant results
-- No codebase embedding index (LanceDB extension exists but not wired to queries)
-
-**Required:**
-- Wire `memory-lancedb` extension into `project_knowledge` tool for vector search
-- Add `codebase_search` tool: embeds query → searches LanceDB → returns ranked file/function matches
-- MCP server for CoderClaw: expose `codebase_search`, `project_knowledge`, `git_history` as MCP tools so Cursor/Windsurf/Continue can call them
-- Semantic auto-context: before dispatching a subagent, pre-fetch top-K semantically relevant files and inject into system prompt
-
----
-
-#### 3. Inline Pair Programming / Diff Mode
-
-**Competitors with this:**
-- **Aider**: Full diff-based pair programming — shows unified diffs before applying, user can accept/reject each hunk
-- **Cursor Composer**: Shows changes in a diff panel; user clicks Accept/Reject on each file
-- **Windsurf Cascade**: Side-by-side before/after with line-by-line accept
-- **Continue.dev**: `⌘K` inline edit with diff overlay in the editor
-- **GitHub Copilot**: Ghost text + inline chat with Accept/Dismiss
-
-**CoderClaw Gap:**
-- `edit` and `create` tools apply changes immediately; there is no pre-apply diff review
-- No "pending changes" buffer — once the agent writes a file, it is written
-- No TUI diff viewer — changes are only visible via `git diff` after the fact
-- No "accept all / reject all / review file by file" workflow
-- `/elevated` flag is all-or-nothing; no granular file-level approval gate
-
-**Required:**
-- Diff staging buffer: `edit`/`create` tool writes to a staged store; human approves before `git add`
-- TUI `/diff` command: show pending staged changes as unified diff
-- TUI `/accept [file]` and `/reject [file]`: apply or discard staged changes
-- Integration with approval workflow API (P3-3 in CODERCLAW_LINK_GAPS.md)
-
----
-
-#### 4. Session / Conversation Continuity (Checkpoint & Resume)
-
-**Competitors with this:**
-- **Devin**: Full session replay; any session can be forked or resumed
-- **Plandex**: Explicit "plan" object that persists across sessions and can be reviewed/edited
-- **Aider**: `--message` flag + git-based undo with `/undo` command
-- **Claude Code**: `--continue` flag to resume last session
-
-**CoderClaw Gap:**
-- Session handoffs exist (`/handoff`) but are manual and text-based
-- No automatic checkpoint on `/new` or `ctrl+C`
-- Workflow state persists to YAML but there is no TUI resume picker
-- No `/undo` for the last agent action (git-based rollback)
-
-**Required:**
-- Auto-checkpoint: on session exit, automatically write handoff if messages exist (Gap -1.3 remainder)
-- TUI `/sessions` picker: list available handoffs with date/summary, select to resume
-- TUI `/undo`: call `git stash` or `git checkout HEAD` to revert last agent change
-- `/fork`: create a branch from current workspace state before running a risky workflow
-
----
-
-#### 5. Multi-Model Routing & Persona Selection
-
-**Competitors with this:**
-- **Cursor**: Model picker per conversation (GPT-4o, Claude 3.5, etc.)
-- **Continue.dev**: Per-context-type model routing (chat vs. autocomplete vs. embed)
-- **Goose**: `--provider` and `--model` flags; persona profiles in config
-- **OpenHands**: Model picker in web UI
-
-**CoderClaw Gap:**
-- `/model` command switches the session model but does not assign specific models to specific agent roles
-- Architecture Advisor could use Claude Opus for reasoning; Code Creator uses Claude Sonnet for speed
-- No "persona" concept: system prompt customization is role-level, not persona-level
-- No model-per-role assignment in workflow YAML
-
-**Required:**
-- Workflow YAML: add optional `model` field per step (overrides role default)
-- TUI: `/persona <name>` command to load persona profile from `.coderClaw/personas/*.yaml`
-- Persona file format: `{ name, model, systemPromptAddition, thinkingLevel, tools }`
-- coderClawLink: persona registry with shared team personas
-
----
-
-#### 6. GitHub / GitLab Deep Integration
-
-**Competitors with this:**
-- **GitHub Copilot**: Native PR review, issue linking, code search
-- **Devin**: Opens PRs, handles review comments, runs CI
-- **Aider**: `--auto-commits`, `--commit`, git blame integration
-- **Claude Code**: `gh pr create`, `gh issue list` via tool calls
-
-**CoderClaw Gap:**
-- `gh-issues` and `github` skills exist but are not wired into orchestrator workflows
-- No workflow type for "handle this GitHub issue end-to-end"
-- No automatic PR creation after a workflow completes
-- No CI/CD feedback loop: if tests fail in GitHub Actions, no automatic retry
-
-**Required:**
-- New workflow type: `issue` — takes a GitHub issue URL, fetches context, plans fix, implements, opens PR
-- Orchestrator post-workflow hook: `createPR()` if workflow completed successfully
-- CI feedback: poll GitHub Actions after PR; if failed, spawn Bug Analyzer subagent with logs
-- `gh_issue` tool: fetch issue body + comments; surface as context to first workflow step
-
----
-
-#### 7. Voice / TTS Interaction
-
-**Competitors with this:**
-- **GitHub Copilot Voice**: Dictate commands and code
-- **Continue.dev**: Experimental voice mode
-- **CoderClaw already has** Talk Mode / Voice Wake on macOS/iOS/Android
-
-**CoderClaw Gap (minor):**
-- Voice commands cannot directly trigger slash commands (`/spec`, `/workflow`)
-- No voice feedback for workflow status (TTS output of task completions)
-
-**Required:**
-- Map voice intent → TUI slash command (e.g., "start a feature for auth" → `/spec Add auth feature`)
-- TTS: on workflow completion, speak summary via `sag` skill
-
----
-
-#### 8. AI-Assisted Code Review as a Service
-
-**Competitors with this:**
-- **CodeRabbit**: Automated PR review as a GitHub App
-- **Ellipsis**: PR summary + review bot
-- **Sourcegraph Cody**: Inline code review suggestions
-- **GitHub Copilot**: PR summary in sidebar
-
-**CoderClaw Gap:**
-- Code Reviewer role exists but only runs in a local workflow
-- No GitHub App webhook handler to auto-review PRs
-- No PR comment posting from an agent
-
-**Required:**
-- GitHub App integration: on PR opened/updated, trigger `adversarial` review workflow
-- Post review as GitHub PR review comments via `gh` tool
-- Configurable review depth: quick (security/bugs only) vs. full (style + architecture)
-
----
-
-## Summary: Priority Feature Gaps
-
-| # | Feature | Priority | Effort | Blocker |
-|---|---------|----------|--------|---------|
-| 1 | Orchestration workspace live UI | P0 | L | coderClawLink |
-| 2 | MCP codebase semantic search | P0 | M | memory-lancedb wiring |
-| 3 | Inline diff / pair programming mode | P1 | M | new TUI commands |
-| 4 | Session checkpoint & resume (auto) | P1 | S | TUI change |
-| 5 | Multi-model routing & persona profiles | P1 | M | workflow YAML + TUI |
-| 6 | GitHub issue → PR end-to-end workflow | P1 | M | new workflow type |
-| 7 | Voice → slash command mapping | P2 | S | Talk Mode integration |
-| 8 | AI PR review as GitHub App | P2 | L | GitHub App infra |
-
----
-
-## Competitive Differentiation: What CoderClaw Does Better
-
-These are genuine advantages that no competitor currently matches:
-
-| Feature | Advantage |
-|---------|-----------|
-| **Distributed claw mesh** | Multiple developer machines can collaborate on one workflow via `remote:<clawId>` |
-| **Any messaging channel** | WhatsApp, Telegram, Slack, Discord, iMessage — code from your phone |
-| **Workflow persistence** | Resume half-finished workflows after restart; no competitor does this |
-| **7-role specialization** | Role-specific system prompts, models, and tool access per task |
-| **Adversarial review pass** | Built-in critique → defence → revised proposal loop |
-| **Post-task memory loop** | Every run appended to `.coderClaw/memory/` with semantic summary |
-| **Full MIT license** | No AGPL, no per-seat fee, no black-box cloud |
-| **Self-hosting with portal** | Local gateway + coderClawLink cloud portal hybrid |
+| # | Feature | Priority | Effort | Target Quarter |
+|---|---------|----------|--------|----------------|
+| 1 | MCP server (expose CoderClaw tools) | P0 | M | Q2 2026 |
+| 2 | Codebase semantic search + auto-context | P0 | M | Q2 2026 |
+| 3 | Inline diff / accept-reject (staged edits) | P1 | M | Q2 2026 |
+| 4 | VS Code extension (sidebar + diff decoration) | P1 | L | Q3 2026 |
+| 5 | Tab autocomplete (FIM proxy) | P2 | M | Q3 2026 |
+| 6 | Session auto-checkpoint | P1 | S | Q2 2026 |
+| 7 | Persona profiles | P1 | M | Q2 2026 |
+| 8 | GitHub issue → PR workflow | P1 | M | Q2 2026 |
