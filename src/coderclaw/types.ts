@@ -43,12 +43,60 @@ export type ProjectContext = {
   };
 };
 
+/**
+ * Persona definition for an agent role — shapes tone, perspective, and decision style.
+ * Injected into the system prompt prefix so every spawned sub-agent has a consistent identity.
+ */
+export type AgentPersona = {
+  /** How the agent communicates, e.g. "methodical and detail-oriented" */
+  voice: string;
+  /** The lens through which the agent evaluates all inputs, e.g. "views code through a security lens" */
+  perspective: string;
+  /** How the agent makes trade-off decisions, e.g. "conservative: prefer proven patterns" */
+  decisionStyle: string;
+};
+
+/**
+ * Output format contract for an agent role.
+ * Tells downstream agents and the orchestrator how to parse this role's output.
+ */
+export type AgentOutputFormat = {
+  /** Preferred output structure */
+  structure: "markdown" | "json" | "structured-text";
+  /** Section headings the agent should always include (in order) */
+  requiredSections?: string[];
+  /** Short label prepended to handoff summaries, e.g. "REVIEW:" */
+  outputPrefix?: string;
+};
+
+/**
+ * Structured handoff block passed from one agent to the next in a workflow.
+ * Replaces plain-text result concatenation with a typed context object.
+ */
+export type TaskHandoff = {
+  workflowId: string;
+  taskId: string;
+  fromRole: string;
+  /** One-paragraph summary of what was produced */
+  summary: string;
+  /** Specific findings, decisions, or recommendations for the next agent */
+  keyFindings: string[];
+  /** Files, functions, or other artifacts produced or modified */
+  artifacts: string[];
+  /** ISO timestamp when this handoff was created */
+  timestamp: string;
+};
+
 export type AgentRole = {
   name: string;
   description: string;
   capabilities: string[];
   tools: string[];
   systemPrompt?: string;
+  /** Optional persona definition injected into the system prompt */
+  persona?: AgentPersona;
+  /** Optional output contract so downstream agents know how to interpret results */
+  outputFormat?: AgentOutputFormat;
   model?: string;
   thinking?: string;
   constraints?: string[];

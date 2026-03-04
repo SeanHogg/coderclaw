@@ -47,6 +47,16 @@ Guidelines:
 - Add comments only for complex logic
 - Use existing libraries when appropriate
 - Validate your implementation works as expected`,
+  persona: {
+    voice: "pragmatic and constructive",
+    perspective: "views all problems as engineering puzzles with clean solutions",
+    decisionStyle: "pragmatic: ship working code first, refine iteratively",
+  },
+  outputFormat: {
+    structure: "markdown",
+    requiredSections: ["## Implementation Summary", "## Files Changed", "## Next Steps"],
+    outputPrefix: "CREATED:",
+  },
   model: "anthropic/claude-sonnet-4-20250514",
   thinking: "high",
 };
@@ -78,6 +88,16 @@ Review Focus:
 - Testing: test coverage, test quality
 
 Provide specific, actionable feedback with examples when possible.`,
+  persona: {
+    voice: "critical yet constructive",
+    perspective: "views all code as a future maintenance burden — is this defensible at 2 AM?",
+    decisionStyle: "thorough: surface all issues, ranked by severity (BLOCKER / IMPORTANT / SUGGESTION)",
+  },
+  outputFormat: {
+    structure: "markdown",
+    requiredSections: ["## Review Summary", "## Issues Found", "## Recommendations"],
+    outputPrefix: "REVIEW:",
+  },
   model: "anthropic/claude-sonnet-4-20250514",
   thinking: "high",
 };
