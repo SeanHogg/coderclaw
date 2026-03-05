@@ -8,7 +8,7 @@
  * The check is cheap (no network calls) and is performed once per process;
  * the result is cached so it does not add latency to subsequent requests.
  *
- * Model footprint for onnx-community/SmolLM2-1.7B-Instruct (q4):
+ * Model footprint for HuggingFaceTB/SmolLM2-1.7B-Instruct (q4):
  *   Disk  ~900 MB — downloaded once and cached in cacheDir
  *   RAM   ~1.5 GB — loaded into Node.js heap during inference
  */

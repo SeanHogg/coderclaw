@@ -430,7 +430,12 @@ export async function runOnboardingWizard(
       nextConfig = authResult.config;
     }
 
-    if (authChoiceFromPrompt && authChoice !== "custom-api-key" && authChoice !== "local") {
+    if (
+      authChoiceFromPrompt &&
+      authChoice !== "custom-api-key" &&
+      authChoice !== "local" &&
+      authChoice !== "coderclawllm"
+    ) {
       const modelSelection = await promptDefaultModel({
         config: nextConfig,
         prompter,
@@ -493,6 +498,39 @@ export async function runOnboardingWizard(
     }
 
     await warnIfModelConfigLooksOff(nextConfig, prompter);
+  }
+
+  // ── Optional local brain (CoderClawLLM-local / SmolLM2 ONNX) ─────────────
+  if (nextConfig.models?.providers?.["coderclawllm-local"]?.api !== "transformers") {
+    const localBrainChoice = await prompter.select({
+      message: "Enable CoderClawLLM local brain?",
+      options: [
+        {
+          value: "smart",
+          label: "Smarter with CoderClawLLM-local",
+          hint: "Enhances .coderclaw memory locally.",
+        },
+        {
+          value: "skip",
+          label: "Skip — use my configured LLM only",
+          hint: "No extra download. Uses whatever model you configured above.",
+        },
+      ],
+      initialValue: "skip",
+    });
+    if (localBrainChoice === "smart") {
+      nextConfig = { ...nextConfig, localBrain: { enabled: true } };
+      const { downloadAndWireLocalBrain } = await import(
+        "../commands/auth-choice.apply.transformers.js"
+      );
+      const result = await downloadAndWireLocalBrain({
+        config: nextConfig,
+        prompter,
+      });
+      nextConfig = { ...result.config, localBrain: { enabled: true } };
+    } else {
+      nextConfig = { ...nextConfig, localBrain: { enabled: false } };
+    }
   }
 
   let settings: GatewayWizardSettings;

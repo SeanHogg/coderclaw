@@ -48,7 +48,7 @@ describe("isModelCached", () => {
   });
 
   it("returns false when cache directory does not contain the model slug", async () => {
-    const result = await isModelCached(tmpDir, "onnx-community/SmolLM2-1.7B-Instruct");
+    const result = await isModelCached(tmpDir, "HuggingFaceTB/SmolLM2-1.7B-Instruct");
     expect(result).toBe(false);
   });
 
@@ -56,14 +56,14 @@ describe("isModelCached", () => {
     // HuggingFace cache uses models--<org>--<name> slug
     const slug = "models--onnx-community--SmolLM2-1.7B-Instruct";
     await fs.mkdir(path.join(tmpDir, slug), { recursive: true });
-    const result = await isModelCached(tmpDir, "onnx-community/SmolLM2-1.7B-Instruct");
+    const result = await isModelCached(tmpDir, "HuggingFaceTB/SmolLM2-1.7B-Instruct");
     expect(result).toBe(true);
   });
 
   it("returns false when the slug path is a file, not a directory", async () => {
     const slug = "models--onnx-community--SmolLM2-1.7B-Instruct";
     await fs.writeFile(path.join(tmpDir, slug), "not a dir", "utf-8");
-    const result = await isModelCached(tmpDir, "onnx-community/SmolLM2-1.7B-Instruct");
+    const result = await isModelCached(tmpDir, "HuggingFaceTB/SmolLM2-1.7B-Instruct");
     expect(result).toBe(false);
   });
 
@@ -97,7 +97,7 @@ describe("checkLocalBrainRequirements", () => {
     vi.spyOn(os, "freemem").mockReturnValue(MIN_RAM_BYTES - 1);
     const result = await checkLocalBrainRequirements({
       cacheDir: tmpDir,
-      modelId: "onnx-community/SmolLM2-1.7B-Instruct",
+      modelId: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
     });
     expect(result.eligible).toBe(false);
     expect(result.reason).toMatch(/insufficient ram/i);
@@ -113,7 +113,7 @@ describe("checkLocalBrainRequirements", () => {
 
     const result = await checkLocalBrainRequirements({
       cacheDir: tmpDir,
-      modelId: "onnx-community/SmolLM2-1.7B-Instruct",
+      modelId: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
     });
     expect(result.eligible).toBe(true);
     expect(result.modelAlreadyCached).toBe(true);
@@ -142,7 +142,7 @@ describe("checkLocalBrainRequirements", () => {
 
     const result = await checkLocalBrainRequirements({
       cacheDir: tmpDir,
-      modelId: "onnx-community/SmolLM2-1.7B-Instruct",
+      modelId: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
     });
     expect(result.eligible).toBe(false);
     expect(result.reason).toMatch(/insufficient disk/i);
@@ -158,7 +158,7 @@ describe("checkLocalBrainRequirements", () => {
 
     const result = await checkLocalBrainRequirements({
       cacheDir: tmpDir,
-      modelId: "onnx-community/SmolLM2-1.7B-Instruct",
+      modelId: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
     });
     expect(result.eligible).toBe(true);
     expect(result.modelAlreadyCached).toBe(false);
@@ -172,7 +172,7 @@ describe("checkLocalBrainRequirements", () => {
 
     const result = await checkLocalBrainRequirements({
       cacheDir: tmpDir,
-      modelId: "onnx-community/SmolLM2-1.7B-Instruct",
+      modelId: "HuggingFaceTB/SmolLM2-1.7B-Instruct",
     });
     expect(result.eligible).toBe(true);
     expect(result.freeDiskBytes).toBeUndefined();

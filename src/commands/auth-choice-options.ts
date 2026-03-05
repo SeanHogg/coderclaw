@@ -29,16 +29,16 @@ const AUTH_CHOICE_GROUP_DEFS: {
     choices: ["local"],
   },
   {
-    value: "coderclawllm",
-    label: "CoderClawLLM",
-    hint: "Managed free model pool, or local brain powered by SmolLM2",
-    choices: ["coderclawllm", "coderclawllm-local"],
+    value: "coderclawlink",
+    label: "CoderClawLink",
+    hint: "All cloud; no local — cloud based LLM",
+    choices: ["coderclawllm", "custom-api-key"],
   },
   {
-    value: "coderclaw",
-    label: "CoderClaw",
-    hint: "Managed endpoint or self-hosted gateway",
-    choices: ["custom-api-key"],
+    value: "coderclawllm",
+    label: "CoderClawLLM",
+    hint: "Local brain; no cloud — local LLM",
+    choices: ["coderclawllm-local"],
   },
   {
     value: "openai",
@@ -188,8 +188,8 @@ const BASE_AUTH_CHOICE_OPTIONS: ReadonlyArray<AuthChoiceOption> = [
   },
   {
     value: "coderclawllm-local",
-    label: "CoderClawLLM (local brain — SmolLM2 ONNX)",
-    hint: "Reasons with .coderclaw memory, routes heavy tasks to any configured LLM",
+    label: "CoderClawLLM (local brain)",
+    hint: "Runs locally, no cloud required",
   },
   {
     value: "coderclawllm",

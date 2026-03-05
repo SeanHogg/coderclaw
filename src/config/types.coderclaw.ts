@@ -97,6 +97,11 @@ export type CoderClawConfig = {
   talk?: TalkConfig;
   gateway?: GatewayConfig;
   memory?: MemoryConfig;
+  /** Local brain (CoderClawLLM / SmolLM2 ONNX) toggle. */
+  localBrain?: {
+    /** Set to false to disable the local SmolLM2 brain. Env override: CODERCLAW_LOCAL_BRAIN=0 */
+    enabled?: boolean;
+  };
 };
 
 export type ConfigValidationIssue = {

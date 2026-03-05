@@ -638,24 +638,36 @@ export async function runEmbeddedAttempt(
       } else if (params.model.api === "transformers") {
         // CoderClawLLM local brain: SmolLM2 ONNX reasons with full .coderclaw
         // memory context, then routes to a configured execution LLM if needed.
-        const providerConfig = params.config?.models?.providers?.[params.model.provider];
-        const cacheDir =
-          typeof providerConfig?.baseUrl === "string" && providerConfig.baseUrl.trim()
-            ? providerConfig.baseUrl.trim()
-            : undefined;
-        const dtype =
-          typeof params.model.headers?.["x-transformers-dtype"] === "string"
-            ? params.model.headers["x-transformers-dtype"]
-            : undefined;
-        activeSession.agent.streamFn = createCoderClawLlmLocalStreamFn({
-          config: params.config,
-          modelId: params.modelId,
-          dtype,
-          cacheDir,
-          workspaceDir: params.workspaceDir,
-          // Skip MEMORY.md in shared/channel contexts to avoid leaking personal data.
-          isSharedContext: !!(params.messageChannel ?? params.messageProvider),
-        });
+        // Gated by config.localBrain.enabled and CODERCLAW_LOCAL_BRAIN env var.
+        const localBrainEnv = process.env.CODERCLAW_LOCAL_BRAIN?.trim();
+        const localBrainEnabled =
+          localBrainEnv !== undefined
+            ? localBrainEnv !== "0" && localBrainEnv.toLowerCase() !== "false"
+            : params.config?.localBrain?.enabled !== false;
+
+        if (!localBrainEnabled) {
+          // User opted out of the local brain — fall through to default SDK stream.
+          activeSession.agent.streamFn = streamSimple;
+        } else {
+          const providerConfig = params.config?.models?.providers?.[params.model.provider];
+          const cacheDir =
+            typeof providerConfig?.baseUrl === "string" && providerConfig.baseUrl.trim()
+              ? providerConfig.baseUrl.trim()
+              : undefined;
+          const dtype =
+            typeof params.model.headers?.["x-transformers-dtype"] === "string"
+              ? params.model.headers["x-transformers-dtype"]
+              : undefined;
+          activeSession.agent.streamFn = createCoderClawLlmLocalStreamFn({
+            config: params.config,
+            modelId: params.modelId,
+            dtype,
+            cacheDir,
+            workspaceDir: params.workspaceDir,
+            // Skip MEMORY.md in shared/channel contexts to avoid leaking personal data.
+            isSharedContext: !!(params.messageChannel ?? params.messageProvider),
+          });
+        }
       } else {
         // Force a stable streamFn reference so vitest can reliably mock @mariozechner/pi-ai.
         activeSession.agent.streamFn = streamSimple;

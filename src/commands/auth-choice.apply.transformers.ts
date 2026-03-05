@@ -1,24 +1,26 @@
-import os from "node:os";
 import path from "node:path";
 import type { CoderClawConfig } from "../config/config.js";
+import { resolveStateDir } from "../config/paths.js";
+import { ensureAuthProfileStore } from "../agents/auth-profiles.js";
 import { downloadCoderClawLlmModel } from "../agents/transformers-stream.js";
 import type { ApplyAuthChoiceParams, ApplyAuthChoiceResult } from "./auth-choice.apply.js";
+import { promptAuthChoiceGrouped } from "./auth-choice-prompt.js";
 import { applyPrimaryModel } from "./model-picker.js";
 
 /** Provider ID written into the config for the local-brain entry. */
 export const CODERCLAWLLM_LOCAL_PROVIDER_ID = "coderclawllm-local";
 /** @deprecated Use CODERCLAWLLM_LOCAL_PROVIDER_ID */
 export const TRANSFORMERS_PROVIDER_ID = CODERCLAWLLM_LOCAL_PROVIDER_ID;
-// onnx-community/SmolLM2-1.7B-Instruct ships ONNX-quantized weights that are
+// HuggingFaceTB/SmolLM2-1.7B-Instruct ships ONNX-quantized weights that are
 // natively supported by @huggingface/transformers without any extra tooling.
-export const TRANSFORMERS_DEFAULT_MODEL_ID = "onnx-community/SmolLM2-1.7B-Instruct";
+export const TRANSFORMERS_DEFAULT_MODEL_ID = "HuggingFaceTB/SmolLM2-1.7B-Instruct";
 export const TRANSFORMERS_DEFAULT_DTYPE = "q4";
 
 const DTYPE_OPTIONS = ["q4", "q5", "q8", "fp16", "fp32"] as const;
 type TransformersDtype = (typeof DTYPE_OPTIONS)[number];
 
 function defaultCacheDir(): string {
-  return path.join(os.homedir(), ".cache", "huggingface", "transformers");
+  return path.join(resolveStateDir(), "models");
 }
 
 function toModelKey(modelId: string): string {
@@ -31,7 +33,7 @@ function applyTransformersProviderConfig(
   dtype: string,
   cacheDir: string,
 ): CoderClawConfig {
-  const next: CoderClawConfig = {
+  return {
     ...cfg,
     models: {
       ...cfg.models,
@@ -59,9 +61,100 @@ function applyTransformersProviderConfig(
       },
     },
   };
-
-  return applyPrimaryModel(next, toModelKey(modelId));
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function extractPrimaryModel(cfg: CoderClawConfig): string | undefined {
+  const model = cfg.agents?.defaults?.model;
+  if (typeof model === "string") return model;
+  if (model && typeof model === "object") return model.primary;
+  return undefined;
+}
+
+function setModelWithFallback(
+  cfg: CoderClawConfig,
+  primary: string,
+  fallback: string,
+): CoderClawConfig {
+  const defaults = cfg.agents?.defaults;
+  const existingModel = defaults?.model;
+
+  return {
+    ...cfg,
+    agents: {
+      ...cfg.agents,
+      defaults: {
+        ...defaults,
+        model: {
+          ...(typeof existingModel === "object" ? existingModel : undefined),
+          primary,
+          fallbacks: [fallback],
+        },
+      },
+    },
+  };
+}
+
+// ── Download & wire (step 3 only) ─────────────────────────────────────────────
+// Exported so the onboarding wizard can call it directly when the user has
+// already chosen their LLM provider and opted into the local brain.
+
+import type { WizardPrompter } from "../wizard/prompts.js";
+
+export async function downloadAndWireLocalBrain(opts: {
+  config: CoderClawConfig;
+  prompter: WizardPrompter;
+}): Promise<{ config: CoderClawConfig }> {
+  let nextConfig = opts.config;
+  const configuredModelKey = extractPrimaryModel(nextConfig);
+
+  const modelId = TRANSFORMERS_DEFAULT_MODEL_ID;
+  const dtype = TRANSFORMERS_DEFAULT_DTYPE;
+  const cacheDir = defaultCacheDir();
+
+  // Register the transformers provider in the config.
+  nextConfig = applyTransformersProviderConfig(nextConfig, modelId, dtype, cacheDir);
+
+  // Download the model with live progress.
+  let lastFile = "";
+  const spinner = opts.prompter.progress(
+    `Downloading local brain (${dtype})…`,
+  );
+  try {
+    await downloadCoderClawLlmModel({
+      modelId,
+      dtype,
+      cacheDir,
+      onProgress: (file, pct) => {
+        if (file !== lastFile) {
+          lastFile = file;
+        }
+        spinner.update(`Downloading ${path.basename(file)} — ${pct}%`);
+      },
+    });
+    spinner.stop("Local brain downloaded and ready.");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    spinner.stop(
+      `Download failed: ${msg}\nThe configured LLM will be used without a local brain.\nRe-run "coderclaw configure" to try again.`,
+    );
+    return { config: nextConfig };
+  }
+
+  const localModelKey = toModelKey(modelId);
+  if (configuredModelKey && configuredModelKey !== localModelKey) {
+    nextConfig = setModelWithFallback(nextConfig, localModelKey, configuredModelKey);
+  } else {
+    nextConfig = applyPrimaryModel(nextConfig, localModelKey);
+  }
+
+  return { config: nextConfig };
+}
+
+// ── Main handler ──────────────────────────────────────────────────────────────
+// Used when the user picks "coderclawllm-local" as their *primary* auth choice
+// (standalone flow — not from the onboarding wizard).
 
 export async function applyAuthChoiceTransformers(
   params: ApplyAuthChoiceParams,
@@ -70,97 +163,45 @@ export async function applyAuthChoiceTransformers(
     return null;
   }
 
+  // ── Step 1: Select the main LLM provider ───────────────────────────────────
   await params.prompter.note(
-    [
-      "CoderClawLLM local runs an ONNX-quantized brain (SmolLM2) directly in Node.js.",
-      "It loads your .coderclaw memory on every request and routes heavy tasks to any",
-      "other LLM you have configured (Ollama, OpenAI, vLLM, etc.).",
-      "No server, no API key, no Python required.",
-      "Requires: npm install @huggingface/transformers",
-    ].join("\n"),
-    "CoderClawLLM local brain",
+    "First, pick your main LLM provider.\nThis handles coding tasks, complex reasoning, and everything the local brain defers.",
+    "Configure LLM",
   );
 
-  const modelIdInput = await params.prompter.text({
-    message: "HuggingFace model ID",
-    initialValue: TRANSFORMERS_DEFAULT_MODEL_ID,
-    placeholder: TRANSFORMERS_DEFAULT_MODEL_ID,
-    validate: (value) => (String(value ?? "").trim() ? undefined : "Required"),
-  });
-  const modelId = String(modelIdInput ?? "").trim() || TRANSFORMERS_DEFAULT_MODEL_ID;
-
-  const dtype = await params.prompter.select<TransformersDtype>({
-    message: "Quantization dtype",
-    options: DTYPE_OPTIONS.map((d) => ({
-      value: d,
-      label: d,
-      hint:
-        d === "q4"
-          ? "~1 GB RAM — recommended"
-          : d === "q5"
-            ? "~1.2 GB RAM"
-            : d === "q8"
-              ? "~1.8 GB RAM — higher accuracy"
-              : d === "fp16"
-                ? "~3.4 GB RAM — full precision half"
-                : "~6.8 GB RAM — full float32",
-    })),
-    initialValue: TRANSFORMERS_DEFAULT_DTYPE,
+  const llmChoice = await promptAuthChoiceGrouped({
+    prompter: params.prompter,
+    store: ensureAuthProfileStore(params.agentDir, { allowKeychainPrompt: false }),
+    includeSkip: false,
   });
 
-  const cacheDirInput = await params.prompter.text({
-    message: "Model cache directory",
-    initialValue: defaultCacheDir(),
-    placeholder: defaultCacheDir(),
-    validate: (value) => (String(value ?? "").trim() ? undefined : "Required"),
+  const { applyAuthChoice } = await import("./auth-choice.apply.js");
+  const llmResult = await applyAuthChoice({
+    authChoice: llmChoice,
+    config: params.config,
+    prompter: params.prompter,
+    runtime: params.runtime,
+    setDefaultModel: true,
   });
-  const cacheDir = String(cacheDirInput ?? "").trim() || defaultCacheDir();
 
-  const nextConfig = applyTransformersProviderConfig(
-    params.config,
-    modelId,
-    String(dtype),
-    cacheDir,
-  );
+  let nextConfig = llmResult.config;
 
-  await params.prompter.note(
-    [
-      `CoderClawLLM local brain configured.`,
-      `Model: ${modelId}   Dtype: ${String(dtype)}`,
-      `Cache: ${cacheDir}`,
-      `Model key: ${toModelKey(modelId)}`,
-    ].join("\n"),
-    "CoderClawLLM local — setup complete",
-  );
+  // ── Step 2: Smarter brain toggle ───────────────────────────────────────────
+  const enableLocalBrain = await params.prompter.confirm({
+    message: "Enable local brain? (handles simple tasks, defers complex ones)",
+    initialValue: true,
+  });
 
-  // ── Model download (required) ──────────────────────────────────────────────
-  // The brain model must be present for CoderClawLLM to function.
-  // Download it now with live progress rather than blocking silently on first use.
-  let lastFile = "";
-  const spinner = params.prompter.progress(
-    `Downloading CoderClawLLM brain model (${modelId}, ${String(dtype)})…`,
-  );
-  try {
-    await downloadCoderClawLlmModel({
-      modelId,
-      dtype: String(dtype),
-      cacheDir,
-      onProgress: (file, pct) => {
-        if (file !== lastFile) {
-          lastFile = file;
-        }
-        spinner.message(`Downloading ${path.basename(file)} — ${pct}%`);
-      },
-    });
-    spinner.stop("Brain model downloaded and ready.");
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    spinner.stop(
-      `Download failed: ${msg}\nCheck your internet connection and re-run "coderclaw configure".`,
-    );
-    throw new Error(`CoderClawLLM brain model download failed: ${msg}`);
+  if (!enableLocalBrain) {
+    return { config: nextConfig };
   }
 
-  return { config: nextConfig };
+  // ── Step 3: Download & wire ────────────────────────────────────────────────
+  const result = await downloadAndWireLocalBrain({
+    config: nextConfig,
+    prompter: params.prompter,
+  });
+
+  return { config: result.config };
 }
 

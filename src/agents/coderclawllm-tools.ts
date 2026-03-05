@@ -107,9 +107,9 @@ async function toolGrepFiles(
 
   async function walk(dir: string) {
     if (matches.length >= 20) return;
-    let entries: Awaited<ReturnType<typeof fs.readdir>>;
+    let entries: import("node:fs").Dirent<string>[];
     try {
-      entries = await fs.readdir(dir, { withFileTypes: true });
+      entries = await fs.readdir(dir, { withFileTypes: true, encoding: "utf-8" });
     } catch {
       return;
     }
@@ -150,6 +150,7 @@ async function toolRunCode(
   // Check at runtime so consumers without tsx get a clear message.
   if (isTs) {
     try {
+      // @ts-expect-error -- tsx has no type declarations; runtime-only check
       await import("tsx");
     } catch {
       return (

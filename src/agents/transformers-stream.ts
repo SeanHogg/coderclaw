@@ -4,9 +4,9 @@ import type { StreamFn } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, StopReason, TextContent, Usage } from "@mariozechner/pi-ai";
 import { createAssistantMessageEventStream } from "@mariozechner/pi-ai";
 
-// onnx-community/SmolLM2-1.7B-Instruct is the HuggingFace community ONNX build
+// HuggingFaceTB/SmolLM2-1.7B-Instruct is the official HuggingFace ONNX build
 // with pre-quantized q4 weights — optimised for Transformers.js / Node.js inference.
-export const TRANSFORMERS_DEFAULT_MODEL_ID = "onnx-community/SmolLM2-1.7B-Instruct";
+export const TRANSFORMERS_DEFAULT_MODEL_ID = "HuggingFaceTB/SmolLM2-1.7B-Instruct";
 export const TRANSFORMERS_DEFAULT_DTYPE = "q4";
 export const TRANSFORMERS_DEFAULT_CACHE_DIR = "./models";
 
@@ -106,14 +106,20 @@ async function importTransformers() {
 
 // ── Pipeline cache ───────────────────────────────────────────────────────────
 
-type TextGenerationPipeline = Awaited<
-  ReturnType<typeof import("@huggingface/transformers").pipeline>
->;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- pipeline return type is too complex for TS to represent
+type TextGenerationPipeline = any;
 
-// Reusable dtype cast — avoids repeating the conditional type expression.
-type PipelineDtype = Parameters<
-  typeof import("@huggingface/transformers").pipeline
->[2] extends { dtype?: infer D } ? D : string;
+// Known quantization dtypes accepted by @huggingface/transformers pipeline().
+type PipelineDtype =
+  | "auto"
+  | "int8"
+  | "uint8"
+  | "q4"
+  | "q8"
+  | "fp16"
+  | "fp32"
+  | "bnb4"
+  | "q4f16";
 
 const pipelineCache = new Map<string, TextGenerationPipeline>();
 

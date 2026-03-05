@@ -31,9 +31,9 @@ const DEFAULT_TOP_K = 3;
 
 async function walkSourceFiles(dir: string, files: string[] = []): Promise<string[]> {
   if (files.length >= MAX_SCAN_FILES) return files;
-  let entries: Awaited<ReturnType<typeof fs.readdir>>;
+  let entries: import("node:fs").Dirent<string>[];
   try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
+    entries = await fs.readdir(dir, { withFileTypes: true, encoding: "utf-8" });
   } catch {
     return files;
   }
