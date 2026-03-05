@@ -7,6 +7,13 @@ It provides 7 specialized agent roles, a multi-agent orchestrator, 53 skills, an
 a WebSocket-based transport layer. It connects to **coderClawLink** (cloud portal)
 for fleet management, task delegation, approval workflows, and observability.
 
+**New Architecture (2026.3.x): Distributed Cloudflare Worker Control Plane**
+The gateway now operates as a local "brain" connected to a Cloudflare Worker-based
+control plane. The local agent maintains full filesystem/shell access and persistent
+state, while Cloudflare Workers provide scalable routing, container orchestration,
+and user entry points. All persistent state remains on the user's machine; the
+Cloudflare Worker is stateless and can be restarted/replaced at any time.
+
 ## System Diagram
 
 ```
@@ -14,56 +21,29 @@ Human Developer (TUI / IDE / messaging channel)
         │
         ▼
 ┌─────────────────────────────────────────┐
-│            CoderClaw Gateway             │
-│         ws://127.0.0.1:18789            │
+│            CoderClaw Local Agent         │
+│  - Full filesystem & shell access        │
+│  - Persistent memory & task state        │
+│  - 53+ skills (create, edit, bash, etc.) │
+│  - registers with Cloudflare Worker      │
 │                                          │
-│  ┌──────────┐  ┌────────────────────┐   │
-│  │ Sessions  │  │ Agent Dispatcher   │   │
-│  │ (in-mem)  │  │ spawnSubagentDirect│   │
-│  └──────────┘  └────────────────────┘   │
+│              │                           │
+│              ▼                           │
 │  ┌──────────────────────────────────┐   │
-│  │ Tool Registry                    │   │
-│  │ create|edit|view|bash|grep|glob  │   │
-│  │ + coderclaw tools (orchestrate,  │   │
-│  │   workflow_status, code_analysis, │   │
-│  │   project_knowledge, git_history) │   │
+│  │ Cloudflare Worker (Control Plane)│   │
+│  │ - WebSocket router (wss://...)    │   │
+│  │ - Container orchestration API     │   │
+│  │ - Preview URL generation          │   │
+│  │ - Registration & heartbeat        │   │
 │  └──────────────────────────────────┘   │
-│  ┌──────────────────────────────────┐   │
-│  │ Extension System                 │   │
-│  │ diagnostics-otel, memory-core,   │   │
-│  │ memory-lancedb, channels, etc.   │   │
-│  └──────────────────────────────────┘   │
-│  ┌──────────────────────────────────┐   │
-│  │ Model Providers                  │   │
-│  │ Anthropic, OpenAI, Google,       │   │
-│  │ Ollama, node-llama-cpp,          │   │
-│  │ coderclawLLM (planned)           │   │
-│  └──────────────────────────────────┘   │
-└─────────────┬───────────────────────────┘
-              │
-              ▼
+│              │                           │
+│              ▼                           │
 ┌─────────────────────────────────────────┐
-│  ClawLinkTransportAdapter (HTTP)        │
-│  → POST /api/runtime/executions         │
-│  → GET  /api/runtime/executions/:id     │
-│                                          │
-│  ClawLinkRelayService (WS)              │
-│  → wss://.../api/claws/:id/upstream     │
-│  → bridges local gateway ↔ ClawRelayDO  │
-│  → PATCH .../heartbeat every 5 min      │
-│                                          │
-│  ClawLinkDirectorySync (HTTP)           │
-│  → PUT /api/claws/:id/directories/sync  │
-│  → one-way upload of .coderClaw/ files  │
-└─────────────┬───────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────┐
-│        coderClawLink (Cloud)            │
-│  Hono on Cloudflare Workers             │
-│  Drizzle ORM → Postgres (Hyperdrive)    │
-│  ClawRelayDO (Durable Object, WS relay) │
-│  SPA (React) for management             │
+│        coderClawLink Cloud Services      │
+│  - Hono API (HTTP)                       │
+│  - D1 / Postgres (knowledge)             │
+│  - Durable Object (ClawRelayDO)           │
+│  - SPA management UI                     │
 └─────────────────────────────────────────┘
 ```
 
@@ -102,11 +82,13 @@ Human Developer (TUI / IDE / messaging channel)
 
 ### Transport (`src/transport/`)
 
+- **`cloudflare-relay.ts`** — new Cloudflare Worker relay service:
+  - Persistent WebSocket connections to all registered local agents
+  - Container orchestration API (spawn, monitor, destroy containers)
+  - Preview URL management via Cloudflare Tunnel
+  - Heartbeat management with exponential backoff reconnection
+  - Task manifest persistence for automatic recovery after reconnections
 - `clawlink-adapter.ts` — HTTP transport to coderClawLink API (runtime executions)
-- Types: TransportAdapter interface, ClawLinkConfig, RuntimeInterface
-
-### ClawLink Relay (`src/infra/`)
-
 - `clawlink-relay.ts` — `ClawLinkRelayService`: persistent upstream WS + local gateway bridge
   - Connects to `wss://.../api/claws/:id/upstream` on gateway startup
   - Bridges browser→agent: translates relay wire messages into local `GatewayClient` requests
@@ -147,6 +129,19 @@ All enabling gaps closed as of 2026.3.1. See `.coderClaw/planning/CAPABILITY_GAP
 
 ### New Subsystems (2026.3.1)
 
+**Cloudflare Worker Relay** (`src/transport/cloudflare-relay.ts`):
+
+- Stateless WebSocket router that maintains connections to all registered local agents
+- Provides RESTful container orchestration endpoints:
+  - `POST /containers/start` — pulls code sync, spawns container, returns preview URL
+  - `GET /containers/:id/status`
+  - `POST /containers/:id/stop`
+- Persistent task manifest storage (`.coderclaw/tasks/`) ensures containers can be 
+  revived after reconnects or worker restarts
+- Heartbeat integration with `ClawLinkRelayService` for seamless browser ↔ agent 
+  message flow
+- Automatic container cleanup on timeout/error with exponential backoff retry
+
 **Session Handoff** (`src/coderclaw/tools/save-session-handoff-tool.ts`):
 
 - Agent tool that writes `.coderClaw/sessions/<id>.yaml` with summary, decisions, next steps
@@ -183,6 +178,22 @@ All enabling gaps closed as of 2026.3.1. See `.coderClaw/planning/CAPABILITY_GAP
 6. Tool results streamed back to session
 7. Agent produces response
 8. Response rendered in TUI / forwarded to channel
+```
+
+## Data Flow: Cloudflare Worker Integration
+
+```
+1. Cloudflare Worker receives HTTP upgrade → WebSocket connection
+2. Connection authenticated via signed token (mutual TLS or JWT)
+3. Worker registers agent and assigns unique instanceId
+4. Worker maintains heartbeat with agent (exponential backoff reconnection)
+5. For container tasks:
+   a. Worker sends StartContainer command to agent
+   b. Agent syncs code, builds container command, launches container
+   c. Worker proxies I/O streams back to browser preview
+   d. On completion, Worker tears down container and reports status
+6. All container lifecycle events persisted in agent task manifest
+7. If Worker crashes/restarts, agents automatically reconnect and resume
 ```
 
 ## Data Flow: coderClawLink Integration
