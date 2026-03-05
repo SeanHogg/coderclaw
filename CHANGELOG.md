@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+## [2026.3.5] - 2026-03-05
+
+### Changes
+
+- **Workspace templates consolidated into `foundation/`**: moved templates from `docs/reference/templates/` to top-level `foundation/` directory; merged enriched content from root-level files (SOUL.md protocols, HEARTBEAT.md monitoring tasks, USER.md preferences) into foundation templates with YAML front matter preserved; removed redundant root-level duplicates (AGENTS.md, SOUL.md, TOOLS.md, HEARTBEAT.md, MEMORY.md)
+- Updated template resolution paths in `workspace-templates.ts`, `workspace.ts`, `package.json`, and documentation references
+
 ### Added
 
 - **Capability-based claw routing**: orchestrator now supports `remote:auto` (auto-select any online peer) and `remote:auto[cap1,cap2]` (select peer satisfying all listed capabilities) workflow step roles — no manual fleet lookup required
