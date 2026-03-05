@@ -11,6 +11,17 @@ import {
   loadProjectContext,
   loadWorkspaceState,
 } from "../coderclaw/project-context.js";
+import {
+  buildStagedSummary,
+  buildUnifiedDiff,
+  acceptEdit,
+  acceptAllEdits,
+  rejectEdit,
+  rejectAllEdits,
+  getStagedEdit,
+  getStagedEdits,
+  hasStagedEdits,
+} from "../coderclaw/staged-edits.js";
 import type { SessionsPatchResult } from "../gateway/protocol/index.js";
 import { syncCoderClawDirectoryWithMetaUpdate } from "../infra/clawlink-directory-sync.js";
 import { readSharedEnvVar } from "../infra/env-file.js";
@@ -634,6 +645,12 @@ export function createCommandHandlers(context: CommandHandlerContext) {
       case "new":
       case "reset":
         try {
+          // Hint about saving a handoff when the session has had user activity
+          if (state.isConnected && chatLog.hasUserMessages()) {
+            chatLog.addSystem("Tip: Run /handoff first to save session context before resetting.");
+            tui.requestRender();
+          }
+
           // Clear token counts immediately to avoid stale display (#1523)
           state.sessionInfo.inputTokens = null;
           state.sessionInfo.outputTokens = null;
@@ -838,6 +855,111 @@ export function createCommandHandlers(context: CommandHandlerContext) {
           );
         } catch (err) {
           chatLog.addSystem(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+        break;
+      }
+      case "compact":
+        // Explicit handler for /compact: forwards to gateway which interprets it
+        // as a compaction command. Passing raw preserves any extra instructions.
+        await sendMessage(raw);
+        break;
+      case "spec": {
+        const goal = args.trim();
+        if (!goal) {
+          chatLog.addSystem(
+            "Usage: /spec <goal>\nExample: /spec Add real-time collaboration feature",
+          );
+          break;
+        }
+        if (!state.isConnected) {
+          chatLog.addSystem("Gateway is disconnected. Reconnect to start a spec workflow.");
+          break;
+        }
+        await sendMessage(
+          [
+            `Please run a spec-driven planning workflow for the following goal: ${goal}`,
+            "",
+            "Use the orchestrate tool with workflow type 'planning' to produce:",
+            "1. A Product Requirements Document (PRD)",
+            "2. A detailed architecture specification",
+            "3. An ordered task list with dependencies",
+            "",
+            "Save all outputs to .coderClaw/planning/ when complete.",
+          ].join("\n"),
+        );
+        break;
+      }
+      case "workflow": {
+        const workflowId = args.trim();
+        if (!state.isConnected) {
+          chatLog.addSystem("Gateway is disconnected. Reconnect to check workflow status.");
+          break;
+        }
+        await sendMessage(
+          workflowId
+            ? `Please check the status of workflow ${workflowId} using the workflow_status tool and report the results.`
+            : "Please check the status of the latest workflow using the workflow_status tool and report the results.",
+        );
+        break;
+      }
+      case "diff": {
+        const target = args.trim();
+        if (!hasStagedEdits()) {
+          chatLog.addSystem("No staged changes. Agent edits are applied immediately by default.\nRun CODERCLAW_STAGED=true or set staged mode to buffer edits for review.");
+          break;
+        }
+        if (target) {
+          const edit = getStagedEdit(target);
+          if (!edit) {
+            chatLog.addSystem(`No staged edit found for: ${target}\n\n${buildStagedSummary()}`);
+            break;
+          }
+          chatLog.addSystem(`Diff for ${edit.filePath}:\n\n\`\`\`diff\n${buildUnifiedDiff(edit)}\n\`\`\``);
+        } else {
+          const edits = getStagedEdits();
+          const diffs = edits.map((e) => `### ${e.filePath}\n\`\`\`diff\n${buildUnifiedDiff(e)}\n\`\`\``);
+          chatLog.addSystem([buildStagedSummary(), "", ...diffs].join("\n"));
+        }
+        break;
+      }
+      case "accept": {
+        const target = args.trim().toLowerCase();
+        if (!hasStagedEdits()) {
+          chatLog.addSystem("No staged changes to accept.");
+          break;
+        }
+        if (!target || target === "all") {
+          const { accepted, failed } = await acceptAllEdits();
+          const lines: string[] = [];
+          if (accepted.length > 0) lines.push(`✅ Applied ${accepted.length} change(s):\n${accepted.map((f) => `  ${f}`).join("\n")}`);
+          if (failed.length > 0) lines.push(`❌ Failed:\n${failed.map((f) => `  ${f.filePath}: ${f.error}`).join("\n")}`);
+          chatLog.addSystem(lines.join("\n\n") || "Done.");
+        } else {
+          const result = await acceptEdit(target);
+          if (result.accepted) {
+            chatLog.addSystem(`✅ Applied: ${result.filePath}`);
+          } else {
+            chatLog.addSystem(`❌ Failed: ${result.error ?? "unknown error"}`);
+          }
+        }
+        break;
+      }
+      case "reject": {
+        const target = args.trim().toLowerCase();
+        if (!hasStagedEdits()) {
+          chatLog.addSystem("No staged changes to reject.");
+          break;
+        }
+        if (!target || target === "all") {
+          const { rejected } = rejectAllEdits();
+          chatLog.addSystem(`🗑️ Discarded ${rejected.length} staged change(s).`);
+        } else {
+          const result = rejectEdit(target);
+          if (result.rejected) {
+            chatLog.addSystem(`🗑️ Discarded staged edit for: ${result.filePath}`);
+          } else {
+            chatLog.addSystem(`No staged edit found for: ${target}\n\n${buildStagedSummary()}`);
+          }
         }
         break;
       }

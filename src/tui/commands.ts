@@ -133,6 +133,26 @@ export function getSlashCommands(options: SlashCommandOptions = {}): SlashComman
     { name: "onboard", description: "Alias for /setup" },
     { name: "project", description: "Show project context from .coderClaw directory" },
     { name: "sync", description: "Force sync .coderClaw directory to CoderClawLink" },
+    {
+      name: "spec",
+      description: "Run a spec-driven planning workflow (PRD → architecture → tasks)",
+    },
+    {
+      name: "workflow",
+      description: "Show status of the latest (or a specific) workflow",
+    },
+    {
+      name: "diff",
+      description: "Show staged file changes (or a specific file). Use after agent edits.",
+    },
+    {
+      name: "accept",
+      description: "Apply staged changes to disk. /accept [file] or /accept all",
+    },
+    {
+      name: "reject",
+      description: "Discard staged changes. /reject [file] or /reject all",
+    },
   ];
 
   const seen = new Set(commands.map((command) => command.name));
@@ -171,6 +191,7 @@ export function helpText(options: SlashCommandOptions = {}): string {
     "/activation <mention|always>",
     "/new or /reset",
     "/abort",
+    "/compact [instructions]",
     "/settings",
     "/gateway <status|start|stop|restart>",
     "/daemon <status|start|stop|restart>",
@@ -179,6 +200,11 @@ export function helpText(options: SlashCommandOptions = {}): string {
     "/handoff",
     "/project",
     "/sync",
+    "/spec <goal>",
+    "/workflow [id]",
+    "/diff [file]",
+    "/accept [file|all]",
+    "/reject [file|all]",
     "/exit",
     "/setup or /onboard",
   ].join("\n");

@@ -8,11 +8,18 @@ export class ChatLog extends Container {
   private toolById = new Map<string, ToolExecutionComponent>();
   private streamingRuns = new Map<string, AssistantMessageComponent>();
   private toolsExpanded = false;
+  private userMessageCount = 0;
 
   clearAll() {
     this.clear();
     this.toolById.clear();
     this.streamingRuns.clear();
+    this.userMessageCount = 0;
+  }
+
+  /** Returns true if at least one user message has been added since the last clearAll. */
+  hasUserMessages(): boolean {
+    return this.userMessageCount > 0;
   }
 
   addSystem(text: string) {
@@ -21,6 +28,7 @@ export class ChatLog extends Container {
   }
 
   addUser(text: string) {
+    this.userMessageCount++;
     this.addChild(new UserMessageComponent(text));
   }
 
