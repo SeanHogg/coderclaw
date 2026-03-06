@@ -11,7 +11,7 @@ import type {
 } from "./types.js";
 import { loadPersonasFromDir, PERSONAS_SUBDIR } from "./personas.js";
 
-const CODERCLAW_DIR = ".coderClaw";
+const CODERCLAW_DIR = ".coderclaw";
 const CONTEXT_FILE = "context.yaml";
 const ARCHITECTURE_FILE = "architecture.md";
 const RULES_FILE = "rules.yaml";
@@ -490,7 +490,7 @@ export async function updateWorkspaceState(
 // ---------------------------------------------------------------------------
 
 /**
- * Append a knowledge entry to .coderClaw/memory/YYYY-MM-DD.md.
+ * Append a knowledge entry to .coderclaw/memory/YYYY-MM-DD.md.
  * Creates the file and directory if they do not exist.
  */
 export async function appendKnowledgeMemory(projectRoot: string, entry: string): Promise<void> {

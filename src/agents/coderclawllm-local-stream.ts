@@ -34,7 +34,7 @@ import type { StreamFn } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, StopReason, TextContent, Usage } from "@mariozechner/pi-ai";
 import { createAssistantMessageEventStream } from "@mariozechner/pi-ai";
 import type { CoderClawConfig } from "../config/config.js";
-import { logInfo } from "../logger.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   TRANSFORMERS_DEFAULT_CACHE_DIR,
   TRANSFORMERS_DEFAULT_DTYPE,
@@ -58,6 +58,7 @@ import { checkLocalBrainRequirements } from "./coderclawllm-syscheck.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+const log = createSubsystemLogger("brain");
 const MAX_TOOL_ROUNDS = 3;
 
 // ── Brain system prompt ───────────────────────────────────────────────────────
@@ -265,22 +266,35 @@ async function callExecutionLlm(opts: {
     if (!modelId) continue;
 
     const callArgs = { modelId, messages, maxTokens, temperature, signal };
+    log.info(`cortex: calling execution LLM provider=${id} model=${modelId} api=${cfg.api ?? "unknown"}`);
+    const t0 = Date.now();
 
     if (cfg.api === "ollama") {
       const r = await callOllama({ baseUrl: cfg.baseUrl, ...callArgs });
-      if (r !== null) return r;
+      if (r !== null) {
+        log.info(`cortex: completed in ${Date.now() - t0}ms (${r.length} chars)`);
+        return r;
+      }
     } else if (cfg.api === "openai-completions") {
       const apiKey = resolveApiKey(cfg.apiKey ?? "");
       if (!apiKey) continue;
       const r = await callOpenAiCompletions({ baseUrl: cfg.baseUrl, apiKey, ...callArgs });
-      if (r !== null) return r;
+      if (r !== null) {
+        log.info(`cortex: completed in ${Date.now() - t0}ms (${r.length} chars)`);
+        return r;
+      }
     } else if (cfg.api === "openai-responses") {
       const apiKey = resolveApiKey(cfg.apiKey ?? "");
       if (!apiKey) continue;
       const r = await callOpenAiResponses({ baseUrl: cfg.baseUrl, apiKey, ...callArgs });
-      if (r !== null) return r;
+      if (r !== null) {
+        log.info(`cortex: completed in ${Date.now() - t0}ms (${r.length} chars)`);
+        return r;
+      }
     }
+    log.info(`cortex: provider ${id} returned null — trying next provider`);
   }
+  log.info("cortex: no execution LLM returned a result");
   return null;
 }
 
@@ -311,6 +325,9 @@ async function runMultiStepChain(opts: {
   const planMaxTokens = hippocampusPipe ? 512 : 256;
 
   // ── Step 1: Plan pass — hippocampus distils a numbered implementation plan ─
+  const planTier = hippocampusPipe ? "hippocampus" : "amygdala (fallback)";
+  log.info(`${planTier}: starting plan pass...`);
+  const planT0 = Date.now();
   const planContext = [memoryBlock, ragContext, brainPlan].filter(Boolean).join("\n\n");
   const planMessages = convertToTransformersMessages(opts.rawMessages, planContext || undefined);
   planMessages.push({
@@ -318,6 +335,7 @@ async function runMultiStepChain(opts: {
     content: "Produce a concise numbered implementation plan for the task above. Be specific.",
   });
   const plan = await runPipeline(planPipe, planMessages, planMaxTokens, 0.4);
+  log.info(`${planTier}: plan pass completed in ${Date.now() - planT0}ms`);
 
   // ── Step 2: Code pass — cortex (execution LLM) implements the plan ────────
   const codeSystemParts = [
@@ -331,6 +349,7 @@ async function runMultiStepChain(opts: {
     codeSystemParts.join("\n\n") || undefined,
   );
 
+  log.info("cortex: starting code pass...");
   let codeResult = await callExecutionLlm({
     config: opts.config,
     messages: codeMessages,
@@ -356,6 +375,7 @@ async function runMultiStepChain(opts: {
         }
       }
       if (errorParts.length > 0) {
+        log.info(`cortex: code produced ${errorParts.length} error(s) — requesting fix pass`);
         const fixMessages: Array<{ role: string; content: string }> = [
           ...codeMessages,
           { role: "assistant", content: codeResult },
@@ -376,9 +396,13 @@ async function runMultiStepChain(opts: {
     }
   }
 
-  if (codeResult !== null) return codeResult;
+  if (codeResult !== null) {
+    log.info("multi-step chain complete — cortex produced final answer");
+    return codeResult;
+  }
 
   // Fallback: amygdala handles directly with memory context only.
+  log.info("cortex returned null — amygdala handling directly as fallback");
   const directMessages = convertToTransformersMessages(
     opts.rawMessages,
     [memoryBlock, ragContext].filter(Boolean).join("\n\n") || undefined,
@@ -455,10 +479,10 @@ export function createCoderClawLlmLocalStreamFn(
           amygdalaEligible = check.eligible;
           hippocampusEligible = check.hippocampusEligible;
           if (!check.eligible) {
-            logInfo(`[amygdala] ${check.reason ?? "System requirements not met."}`);
+            log.info(`amygdala: ${check.reason ?? "system requirements not met"}`);
           }
           if (!check.hippocampusEligible) {
-            logInfo(`[hippocampus] Insufficient RAM for hippocampus model — plan pass will use amygdala.`);
+            log.info("hippocampus: insufficient RAM — plan pass will use amygdala");
           }
         }
 
@@ -466,6 +490,9 @@ export function createCoderClawLlmLocalStreamFn(
         const memoryBlock = opts.workspaceDir
           ? await loadCoderClawMemory(opts.workspaceDir, { isSharedContext: opts.isSharedContext })
           : "";
+        if (memoryBlock) {
+          log.info(`loaded .coderclaw memory (${memoryBlock.length} chars)`);
+        }
 
         // ── 2. RAG — retrieve relevant workspace context ───────────────────────
         const lastUserMsg = [...(context.messages ?? [])].reverse()
@@ -479,6 +506,9 @@ export function createCoderClawLlmLocalStreamFn(
           opts.workspaceDir && queryText
             ? await retrieveRelevantContext({ query: queryText, workspaceDir: opts.workspaceDir })
             : "";
+        if (ragContext) {
+          log.info(`RAG context retrieved (${ragContext.length} chars)`);
+        }
 
         const maxTokens = typeof options?.maxTokens === "number" ? options.maxTokens : 512;
         const temperature = typeof options?.temperature === "number" ? options.temperature : 0.6;
@@ -488,6 +518,7 @@ export function createCoderClawLlmLocalStreamFn(
         // When the amygdala can't load, the cortex handles everything directly.
         // Memory and RAG context are prepended so it's grounded in .coderclaw.
         if (!amygdalaEligible) {
+          log.info("amygdala not eligible → cortex handling entire request");
           const externalSystemParts = [
             context.systemPrompt,
             memoryBlock,
@@ -552,14 +583,17 @@ export function createCoderClawLlmLocalStreamFn(
           try {
             hippocampusPipe = await getOrCreatePipeline(hippocampusModelId, hippocampusDtype, cacheDir);
           } catch {
-            logInfo("[hippocampus] Failed to load hippocampus pipeline — plan pass will use amygdala.");
+            log.info("hippocampus: failed to load pipeline — plan pass will use amygdala");
             hippocampusEligible = false;
           }
         }
 
         // ── 3. Amygdala reasoning pass (fast routing) ─────────────────────────
+        log.info("amygdala: starting reasoning pass...");
+        const amygdalaT0 = Date.now();
         let amygdalaMessages = convertToTransformersMessages(rawMessages, amygdalaSystem);
         let amygdalaText = await runPipeline(amygdalaPipe, amygdalaMessages, 256, 0.4);
+        log.info(`amygdala: reasoning pass completed in ${Date.now() - amygdalaT0}ms`);
 
         // ── 4. Tool loop — execute tool calls the amygdala emitted ────────────
 
@@ -569,6 +603,8 @@ export function createCoderClawLlmLocalStreamFn(
           const calls = parseToolCalls(amygdalaText);
           if (calls.length === 0) break;
 
+          toolRounds++;
+          log.info(`amygdala: tool round ${toolRounds}/${MAX_TOOL_ROUNDS} — ${calls.length} call(s): ${calls.map((c) => c.tool).join(", ")}`);
           const results: ToolResult[] = [];
           for (const call of calls) {
             results.push(await executeToolCall(call, wsDir, { allowRunCode: opts.allowRunCode }));
@@ -579,13 +615,17 @@ export function createCoderClawLlmLocalStreamFn(
             { role: "user", content: `Tool results:\n\n${formatToolResults(results)}` },
           ];
           amygdalaText = await runPipeline(amygdalaPipe, amygdalaMessages, 256, 0.4);
-          toolRounds++;
         }
 
         const isDelegating = amygdalaText.toUpperCase().trimStart().startsWith("DELEGATE");
         const brainPlan = amygdalaText.replace(/^DELEGATE[:\s]*/i, "").trim();
 
+        log.info(`routing: amygdala decision=${isDelegating ? "DELEGATE → hippocampus/cortex" : "HANDLE (responding directly)"}`);
+
         // ── 5. DELEGATE → hippocampus plans, cortex executes ──────────────────
+        if (isDelegating) {
+          log.info(`routing: entering multi-step chain hippocampus=${hippocampusPipe ? "loaded" : "unavailable (amygdala fallback)"} cortex=configured`);
+        }
         const finalText = isDelegating
           ? await runMultiStepChain({
               amygdalaPipe,
@@ -603,6 +643,7 @@ export function createCoderClawLlmLocalStreamFn(
               signal: options?.signal,
             })
           : amygdalaText;
+        log.info(`response ready (${finalText.length} chars, total=${Date.now() - amygdalaT0}ms)`);
 
         const content: TextContent[] = finalText
           ? [{ type: "text" as const, text: finalText }]

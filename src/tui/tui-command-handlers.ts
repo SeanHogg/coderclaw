@@ -35,6 +35,7 @@ import {
   AMYGDALA_DTYPE,
   HIPPOCAMPUS_MODEL_ID,
   HIPPOCAMPUS_DTYPE,
+  CODERCLAWLLM_LOCAL_PROVIDER_ID,
   defaultCacheDir,
   applyTransformersProviderConfig,
 } from "../commands/auth-choice.apply.transformers.js";
@@ -1017,8 +1018,33 @@ export function createCommandHandlers(context: CommandHandlerContext) {
         if (action === "off") {
           try {
             const cfg = loadConfig();
+            // Restore the cortex (fallback) model as primary when disabling
+            // the local brain so requests no longer route through the
+            // coderclawllm-local provider.
+            const localPrefix = `${CODERCLAWLLM_LOCAL_PROVIDER_ID}/`;
+            const currentPrimary = cfg.agents?.defaults?.model?.primary;
+            const fallbacks = cfg.agents?.defaults?.model?.fallbacks ?? [];
+            let modelPatch: Record<string, unknown> = {};
+            if (currentPrimary?.startsWith(localPrefix)) {
+              const newPrimary = fallbacks.find((f) => !f.startsWith(localPrefix));
+              const newFallbacks = fallbacks.filter((f) => f !== newPrimary && !f.startsWith(localPrefix));
+              if (newPrimary) {
+                modelPatch = {
+                  agents: {
+                    ...cfg.agents,
+                    defaults: {
+                      ...cfg.agents?.defaults,
+                      model: newFallbacks.length > 0
+                        ? { primary: newPrimary, fallbacks: newFallbacks }
+                        : { primary: newPrimary },
+                    },
+                  },
+                };
+              }
+            }
             const updated: CoderClawConfig = {
               ...cfg,
+              ...modelPatch,
               localBrain: { ...cfg.localBrain, enabled: false },
             };
             await writeConfigFile(updated);
@@ -1103,6 +1129,43 @@ export function createCommandHandlers(context: CommandHandlerContext) {
                 cfg, amygdalaModelId, amygdalaDtype,
                 hippocampusModelId, hippocampusDtype, cacheDir,
               );
+            }
+
+            // Set the primary model to the local brain entry so that
+            // resolveModel() yields api:"transformers" and the local-brain
+            // gate in attempt.ts activates.  The existing primary becomes the
+            // first fallback (the cortex used for DELEGATE).
+            const localModelKey = `${CODERCLAWLLM_LOCAL_PROVIDER_ID}/${amygdalaModelId}`;
+            const existingPrimary = cfg.agents?.defaults?.model?.primary;
+            const existingFallbacks = cfg.agents?.defaults?.model?.fallbacks ?? [];
+            if (existingPrimary && existingPrimary !== localModelKey) {
+              cfg = {
+                ...cfg,
+                agents: {
+                  ...cfg.agents,
+                  defaults: {
+                    ...cfg.agents?.defaults,
+                    model: {
+                      primary: localModelKey,
+                      fallbacks: [existingPrimary, ...existingFallbacks.filter((f) => f !== localModelKey)],
+                    },
+                  },
+                },
+              };
+            } else if (!existingPrimary) {
+              cfg = {
+                ...cfg,
+                agents: {
+                  ...cfg.agents,
+                  defaults: {
+                    ...cfg.agents?.defaults,
+                    model: {
+                      primary: localModelKey,
+                      fallbacks: existingFallbacks.filter((f) => f !== localModelKey),
+                    },
+                  },
+                },
+              };
             }
 
             const updated: CoderClawConfig = {
@@ -1191,6 +1254,10 @@ export function createCommandHandlers(context: CommandHandlerContext) {
       tui.requestRender();
       const runId = randomUUID();
       noteLocalRunId(runId);
+      // The gateway broadcasts the user message back with runId
+      // `user-${clientRunId}` — note that variant so the dedup guard in
+      // tui-event-handlers recognises it and doesn't render the message twice.
+      noteLocalRunId(`user-${runId}`);
       state.activeChatRunId = runId;
       setActivityStatus("sending");
       reportAction?.("sending message to gateway");
@@ -1207,6 +1274,7 @@ export function createCommandHandlers(context: CommandHandlerContext) {
     } catch (err) {
       if (state.activeChatRunId) {
         forgetLocalRunId?.(state.activeChatRunId);
+        forgetLocalRunId?.(`user-${state.activeChatRunId}`);
       }
       state.activeChatRunId = null;
       chatLog.addSystem(`send failed: ${String(err)}`);

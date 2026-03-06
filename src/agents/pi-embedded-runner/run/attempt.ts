@@ -627,6 +627,9 @@ export async function runEmbeddedAttempt(
       // Ollama native API: bypass SDK's streamSimple and use direct /api/chat calls
       // for reliable streaming + tool calling support (#11828).
       if (params.model.api === "ollama") {
+        log.info(
+          `[brain-routing] run=${params.runId} api=ollama model=${params.modelId} → Ollama native stream`,
+        );
         // Use the resolved model baseUrl first so custom provider aliases work.
         const providerConfig = params.config?.models?.providers?.[params.model.provider];
         const modelBaseUrl =
@@ -648,8 +651,14 @@ export async function runEmbeddedAttempt(
 
         if (!localBrainEnabled) {
           // User opted out of the local brain — fall through to default SDK stream.
+          log.info(
+            `[brain-routing] run=${params.runId} api=transformers localBrain=disabled → cortex (SDK stream)`,
+          );
           activeSession.agent.streamFn = streamSimple;
         } else {
+          log.info(
+            `[brain-routing] run=${params.runId} api=transformers localBrain=enabled → amygdala/hippocampus pipeline`,
+          );
           const providerConfig = params.config?.models?.providers?.[params.model.provider];
           const cacheDir =
             typeof providerConfig?.baseUrl === "string" && providerConfig.baseUrl.trim()
@@ -678,6 +687,9 @@ export async function runEmbeddedAttempt(
           });
         }
       } else {
+        log.info(
+          `[brain-routing] run=${params.runId} api=${params.model.api} model=${params.modelId} → cortex (SDK stream)`,
+        );
         // Force a stable streamFn reference so vitest can reliably mock @mariozechner/pi-ai.
         activeSession.agent.streamFn = streamSimple;
       }

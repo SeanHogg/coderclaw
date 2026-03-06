@@ -44,7 +44,7 @@ agent features.
 
 - Run `pnpm test src/coderclaw/agent-roles.test.ts` → 6/6 pass
 - Start gateway → logs "Loaded N custom agent roles from .coderClaw/agents" if any present
-- Create custom role in `.coderClaw/agents/my-role.yaml` → `orchestrate` workflow steps can reference it
+- Create custom role in `.coderclaw/agents/my-role.yaml` → `orchestrate` workflow steps can reference it
 
 **Remaining work**: None. Validation added in `src/coderclaw/orchestrator.ts` to throw on unknown roles; example custom role provided in `.coderClaw/agents/my-role.yaml`.
 

@@ -13,12 +13,12 @@
 
 ### Bridge `agent-roles.ts` into runtime ✅
 
-- 7 built-in roles + custom roles from `.coderClaw/agents/*.yaml` loaded at gateway startup.
+- 7 built-in roles + custom roles from `.coderclaw/agents/*.yaml` loaded at gateway startup.
 - Role model / tools / system-prompt applied at subagent spawn via `roleConfig`.
 
 ### Session handoff save/load ✅
 
-- `save_session_handoff` tool writes `.coderClaw/sessions/<id>.yaml`.
+- `save_session_handoff` tool writes `.coderclaw/sessions/<id>.yaml`.
 - TUI auto-loads latest handoff on session start.
 - `/handoff` slash command triggers agent to produce and save a handoff.
 
@@ -30,7 +30,7 @@
 
 ### Post-task knowledge loop ✅
 
-- `KnowledgeLoopService` writes `.coderClaw/memory/YYYY-MM-DD.md` after every run.
+- `KnowledgeLoopService` writes `.coderclaw/memory/YYYY-MM-DD.md` after every run.
 - `project_knowledge memory` query surfaces recent entries to agents.
 - Auto-synced to CoderClawLink on write.
 
@@ -158,13 +158,13 @@
 ### Architecture.md semantic auto-update
 
 - After runs with ≥ N structural file changes, trigger a `documentation-agent` subagent
-  to refresh `.coderClaw/architecture.md`.
+  to refresh `.coderclaw/architecture.md`.
 - Add `/knowledge update` TUI command.
 - See CAPABILITY_GAPS.md Gap K.
 
 ### coderClawLink feature gaps
 
-- See `.coderClaw/planning/CODERCLAW_LINK_GAPS.md` for full list.
+- See `.coderclaw/planning/CODERCLAW_LINK_GAPS.md` for full list.
 - Key items: workflow/spec portal UI, execution WS streaming, spec storage API,
   result-streaming relay frame, enhanced fleet management.
 

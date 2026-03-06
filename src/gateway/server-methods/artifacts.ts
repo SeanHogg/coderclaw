@@ -6,7 +6,6 @@
  * content references).
  */
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
-import { loadConfig } from "../../config/config.js";
 import {
   loadPersonaAssignments,
   savePersonaAssignment,
@@ -32,8 +31,7 @@ export const artifactsHandlers: GatewayRequestHandlers = {
     const taskId =
       typeof params?.taskId === "number" ? params.taskId : undefined;
 
-    const cfg = loadConfig();
-    const projectRoot = cfg.projectRoot ?? process.cwd();
+    const projectRoot = process.cwd();
     const results: { personas: number; skills: number; content: number } = {
       personas: 0,
       skills: 0,

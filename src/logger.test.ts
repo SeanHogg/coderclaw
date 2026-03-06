@@ -4,9 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isVerbose, isYes, logVerbose, setVerbose, setYes } from "./globals.js";
-import { logDebug, logError, logInfo, logSuccess, logWarn } from "./logger.js";
 import {
   DEFAULT_LOG_DIR,
+  logDebug,
+  logError,
+  logInfo,
+  logSuccess,
+  logWarn,
   resetLogger,
   setLoggerOverride,
   stripRedundantSubsystemPrefixForConsole,
