@@ -218,6 +218,7 @@ export async function runTui(opts: TuiOptions) {
   let isConnected = false;
   let wasDisconnected = false;
   let toolsExpanded = false;
+  let loggingEnabled = config.logging?.enabled !== false;
   let showThinking = false;
   const localRunIds = new Set<string>();
 
@@ -359,6 +360,12 @@ export async function runTui(opts: TuiOptions) {
     },
     set lastCtrlCAt(value) {
       lastCtrlCAt = value;
+    },
+    get loggingEnabled() {
+      return loggingEnabled;
+    },
+    set loggingEnabled(value) {
+      loggingEnabled = value;
     },
   };
 

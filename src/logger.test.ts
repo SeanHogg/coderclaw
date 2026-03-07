@@ -96,6 +96,24 @@ describe("logger helpers", () => {
 
     cleanup(todayPath);
   });
+
+  it("honors format=text when writing to file", () => {
+    const logPath = pathForTest();
+    cleanup(logPath);
+    setLoggerOverride({ level: "info", file: logPath, format: "text" });
+    logInfo("text-mode");
+    const content = fs.readFileSync(logPath, "utf-8");
+    expect(content.trim().split("\n")[0]).not.toMatch(/^{/);
+    cleanup(logPath);
+  });
+
+  it("does not write any file when logging is disabled", () => {
+    const logPath = pathForTest();
+    cleanup(logPath);
+    setLoggerOverride({ level: "info", file: logPath, enabled: false });
+    logInfo("should-not-appear");
+    expect(fs.existsSync(logPath)).toBe(false);
+  });
 });
 
 describe("globals", () => {

@@ -15,6 +15,7 @@ const CODERCLAW_DIR = ".coderclaw";
 const CONTEXT_FILE = "context.yaml";
 const ARCHITECTURE_FILE = "architecture.md";
 const RULES_FILE = "rules.yaml";
+const GOVERNANCE_FILE = "governance.md";
 const WORKSPACE_STATE_FILE = "workspace-state.json";
 const AGENTS_DIR = "agents";
 const SKILLS_DIR = "skills";
@@ -26,6 +27,7 @@ export type CoderClawDirectory = {
   contextPath: string;
   architecturePath: string;
   rulesPath: string;
+  governancePath: string;
   agentsDir: string;
   skillsDir: string;
   memoryDir: string;
@@ -44,6 +46,7 @@ export function resolveCoderClawDir(projectRoot: string): CoderClawDirectory {
     contextPath: path.join(root, CONTEXT_FILE),
     architecturePath: path.join(root, ARCHITECTURE_FILE),
     rulesPath: path.join(root, RULES_FILE),
+    governancePath: path.join(root, GOVERNANCE_FILE),
     agentsDir: path.join(root, AGENTS_DIR),
     skillsDir: path.join(root, SKILLS_DIR),
     memoryDir: path.join(root, MEMORY_DIR),
@@ -137,6 +140,14 @@ This document describes the architectural design and patterns used in this proje
 `;
   await fs.writeFile(dir.architecturePath, defaultArchitecture, "utf-8");
 
+  // Create placeholder governance.md for project-level policies
+  const defaultGovernance = `# Governance Rules
+
+Define project governance in Markdown. These rules will be read by agents and
+used to guide decision-making.
+`;
+  await fs.writeFile(dir.governancePath, defaultGovernance, "utf-8");
+
   // Create default rules.yaml
   const defaultRules: ProjectRules = {
     version: 1,
@@ -225,6 +236,15 @@ export async function loadProjectRules(projectRoot: string): Promise<ProjectRule
   try {
     const content = await fs.readFile(dir.rulesPath, "utf-8");
     return parseYaml(content) as ProjectRules;
+  } catch {
+    return null;
+  }
+}
+
+export async function loadProjectGovernance(projectRoot: string): Promise<string | null> {
+  const dir = resolveCoderClawDir(projectRoot);
+  try {
+    return await fs.readFile(dir.governancePath, "utf-8");
   } catch {
     return null;
   }

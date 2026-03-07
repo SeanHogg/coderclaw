@@ -446,6 +446,12 @@ export function createCommandHandlers(context: CommandHandlerContext) {
         currentValue: state.showThinking ? "on" : "off",
         values: ["off", "on"],
       },
+      {
+        id: "logging",
+        label: "File logging",
+        currentValue: state.loggingEnabled ? "on" : "off",
+        values: ["off", "on"],
+      },
     ];
     const settings = createSettingsList(
       items,
@@ -457,6 +463,28 @@ export function createCommandHandlers(context: CommandHandlerContext) {
         if (id === "thinking") {
           state.showThinking = value === "on";
           void loadHistory();
+        }
+        if (id === "logging") {
+          const enabled = value === "on";
+          state.loggingEnabled = enabled;
+          // persist change asynchronously
+          (async () => {
+            try {
+              const cfg = loadConfig();
+              const updated: CoderClawConfig = {
+                ...cfg,
+                logging: { ...(cfg.logging ?? {}), enabled },
+              };
+              await writeConfigFile(updated);
+              if (context.config) {
+                context.config.logging = { ...(context.config.logging ?? {}), enabled };
+              }
+            } catch (err) {
+              chatLog.addSystem(
+                `Failed to update config: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+          })();
         }
         tui.requestRender();
       },

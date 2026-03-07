@@ -169,6 +169,8 @@ export const CoderClawSchema = z
       .optional(),
     logging: z
       .object({
+        enabled: z.boolean().optional(),
+        format: z.union([z.literal("json"), z.literal("text")]).optional(),
         level: z
           .union([
             z.literal("silent"),

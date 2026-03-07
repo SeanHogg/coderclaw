@@ -19,6 +19,13 @@ const MAX_LOG_AGE_MS = 24 * 60 * 60 * 1000; // 24h
 const requireConfig = createRequire(import.meta.url);
 
 export type LoggerSettings = {
+  /** mirror of logging.enabled config; setting to false simply suppresses all
+   * file output (level will be treated as "silent"). */
+  enabled?: boolean;
+  /** if "text", the logger writes pretty/compact lines instead of JSON;
+   * useful when you just want a plain file with human-readable entries. */
+  format?: "json" | "text";
+
   level?: LogLevel;
   file?: string;
   consoleLevel?: LogLevel;
@@ -28,6 +35,8 @@ export type LoggerSettings = {
 type LogObj = { date?: Date } & Record<string, unknown>;
 
 type ResolvedSettings = {
+  enabled: boolean;
+  format: "json" | "text";
   level: LogLevel;
   file: string;
 };
@@ -67,16 +76,25 @@ function resolveSettings(): ResolvedSettings {
     process.env.VITEST === "true" && process.env.CODERCLAW_TEST_FILE_LOG !== "1"
       ? "silent"
       : "info";
-  const level = normalizeLogLevel(cfg?.level, defaultLevel);
+  const enabled = cfg?.enabled !== false; // default true
+  const level = enabled
+    ? normalizeLogLevel(cfg?.level, defaultLevel)
+    : "silent" as LogLevel;
   const file = cfg?.file ?? defaultRollingPathForToday();
-  return { level, file };
+  const format = cfg?.format === "text" ? "text" : "json";
+  return { enabled, level, file, format };
 }
 
 function settingsChanged(a: ResolvedSettings | null, b: ResolvedSettings) {
   if (!a) {
     return true;
   }
-  return a.level !== b.level || a.file !== b.file;
+  return (
+    a.enabled !== b.enabled ||
+    a.level !== b.level ||
+    a.file !== b.file ||
+    a.format !== b.format
+  );
 }
 
 export function isFileLogLevelEnabled(level: LogLevel): boolean {
@@ -84,13 +102,23 @@ export function isFileLogLevelEnabled(level: LogLevel): boolean {
   if (!loggingState.cachedSettings) {
     loggingState.cachedSettings = settings;
   }
-  if (settings.level === "silent") {
+  if (!settings.enabled || settings.level === "silent") {
     return false;
   }
   return levelToMinLevel(level) <= levelToMinLevel(settings.level);
 }
 
 function buildLogger(settings: ResolvedSettings): TsLogger<LogObj> {
+  // If user has disabled file logging, return a no-op logger with silent
+  // level.  This keeps callers happy while avoiding touching the filesystem.
+  if (!settings.enabled) {
+    return new TsLogger<LogObj>({
+      name: "coderclaw",
+      minLevel: levelToMinLevel("silent"),
+      type: "hidden",
+    });
+  }
+
   fs.mkdirSync(path.dirname(settings.file), { recursive: true });
   // Clean up stale rolling logs when using a dated log filename.
   if (isRollingPath(settings.file)) {
@@ -105,8 +133,21 @@ function buildLogger(settings: ResolvedSettings): TsLogger<LogObj> {
   logger.attachTransport((logObj: LogObj) => {
     try {
       const time = logObj.date?.toISOString?.() ?? new Date().toISOString();
-      const line = JSON.stringify({ ...logObj, time });
-      fs.appendFileSync(settings.file, `${line}\n`, { encoding: "utf8" });
+      if (settings.format === "text") {
+        // TsLogger hands us positional args under numeric keys and an `_meta`
+        // object with level/name info.  We'll string them together into a
+        // simple line.
+        const meta = (logObj as any)._meta as Record<string, unknown> | undefined;
+        const lvl = meta?.logLevelName ? String(meta.logLevelName) : "";
+        const part0 = logObj[0] !== undefined ? String((logObj as any)[0]) : "";
+        const part1 = logObj[1] !== undefined ? JSON.stringify((logObj as any)[1]) : "";
+        const suffix = part1 && part1 !== "{}" ? ` ${part1}` : "";
+        const plain = `${time} ${lvl.toUpperCase()} ${part0}${suffix}`.trim();
+        fs.appendFileSync(settings.file, `${plain}\n`, { encoding: "utf8" });
+      } else {
+        const line = JSON.stringify({ ...logObj, time });
+        fs.appendFileSync(settings.file, `${line}\n`, { encoding: "utf8" });
+      }
     } catch {
       // never block on logging failures
     }
