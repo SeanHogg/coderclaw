@@ -1,0 +1,33 @@
+{
+  "name": "@coderclaw/tlon",
+  "version": "2026.3.8",
+  "private": true,
+  "description": "CoderClaw Tlon/Urbit channel plugin",
+  "type": "module",
+  "dependencies": {
+    "@urbit/aura": "^3.0.0"
+  },
+  "devDependencies": {
+    "coderclaw": "workspace:*"
+  },
+  "coderclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "channel": {
+      "id": "tlon",
+      "label": "Tlon",
+      "selectionLabel": "Tlon (Urbit)",
+      "docsPath": "/channels/tlon",
+      "docsLabel": "tlon",
+      "blurb": "decentralized messaging on Urbit; install the plugin to enable.",
+      "order": 90,
+      "quickstartAllowFrom": true
+    },
+    "install": {
+      "npmSpec": "@coderclaw/tlon",
+      "localPath": "extensions/tlon",
+      "defaultChoice": "npm"
+    }
+  }
+}

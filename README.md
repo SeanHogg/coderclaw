@@ -1,4 +1,4 @@
-# 🦞 CoderClaw — Developer-First Multi-Agent AI System
+# CoderClaw — Developer-First Multi-Agent AI System
 
 <p align="center">
     <img src="https://raw.githubusercontent.com/SeanHogg/coderClaw/main/assets/coderclaw.png" alt="CoderClaw" width="300">
@@ -106,6 +106,56 @@ CODERCLAW_STAGED=true coderclaw gateway
 | **Open source (MIT)**                      | ✅                                       | ❌                          | ❌                 | ❌                 | ✅                |
 
 CoderClaw is not a plugin or an IDE extension. It is a **full orchestration runtime** that understands your codebase, coordinates specialized agents, and works wherever you do — in your terminal, your chat apps, or your CI pipeline.
+
+## 📁 Repository structure
+
+This repository is organized so that the **CoderClaw product** (CLI, gateway, agents, docs) lives in one place; **apps** and **assets** are separate and shared, and can be built or used independently.
+
+| Directory    | Purpose |
+| ------------ | ------- |
+| **`product/`** | All CoderClaw product code: CLI, gateway, agents, extensions, skills, tests. This is the main package you run and extend. |
+| **`apps/`**    | Companion apps (e.g. Android, iOS, macOS) — shared, built separately from the product. |
+| **`assets/`**  | Shared assets (images, branding). Used by product and apps. |
+| **`docs-site/`** | Documentation site (now inside this repo). Source for [docs.coderclaw.ai](https://docs.coderclaw.ai). |
+
+When you run CoderClaw (e.g. `coderclaw gateway` or `coderclaw agent`), it **only creates or updates files** in:
+
+- **Project-local:** `<cwd>/.coderclaw/` — context, memory, sessions, personas, agents, skills for the project you’re in.
+- **Global:** `~/.coderclaw/` (or `CODERCLAW_STATE_DIR`) — config, logs, models cache, credentials, daemon scripts, workspace data.
+
+No other directories are written to by the product.
+
+## 🔀 Running multiple CoderClaw instances (side-by-side versions)
+
+You can run and install **two or more CoderClaw instances** on the same machine (e.g. one default, one for “work”, one for experiments). Each instance has its own config, port, state, and (when installed as a daemon) its own service name.
+
+**How it works**
+
+- **Install-path isolation** — State dir is derived from where CoderClaw is installed. Different installs (e.g. different npm/pnpm global roots) get different state dirs: `~/.coderclaw/<install-id>`. Run the v1 binary in terminal A and the v2 binary in terminal B; each gets its own `~/.coderclaw/<id>` and gateway. No env vars needed.
+- **Legacy** — If you already have `~/.coderclaw` with `coderclaw.json`, that keeps working; new installs use the subdir.
+- **Config** — Config is loaded from that state dir: `<state-dir>/coderclaw.json`. Override with `CODERCLAW_CONFIG_PATH` if needed.
+- **Port** — Each instance must listen on a different port. Set `gateway.port` in that instance’s config (or `CODERCLAW_GATEWAY_PORT` when starting). Default is `18789`; use e.g. `18790` for a second instance.
+- **Daemon (launchd / systemd / schtasks)** — When you install the gateway as a service, the **profile** (or state dir) is baked into the service: different profile → different state dir, script path, and service name (e.g. “CoderClaw Gateway (work)” on Windows, `coderclaw-gateway-work` on Linux, `ai.coderclaw.work` on macOS).
+- **Gateway lock** — The lock file is keyed by config path, so multiple instances do not block each other.
+
+**Ways to run a second instance**
+
+1. **Different version in another terminal (automatic)** — Install another version (e.g. `pnpm add -g coderclaw@next`). In that terminal run `coderclaw gateway`. It uses `~/.coderclaw/<other-id>` and its own config/port. Set a different `gateway.port` in that config so it doesn't clash.
+
+2. **Profile (same binary, different instance)** — `coderclaw --profile work gateway` → state dir `~/.coderclaw-work`; set port in `~/.coderclaw-work/coderclaw.json`. Or `CODERCLAW_PROFILE=work` in the env.
+
+3. **Explicit state dir** — `CODERCLAW_STATE_DIR=~/.coderclaw-v2 coderclaw gateway` and a different port.
+
+**Summary**
+
+| What        | Default (single instance) | Second instance (e.g. profile `work`)      |
+| ----------- | ------------------------- | ------------------------------------------ |
+| State dir   | `~/.coderclaw`            | `~/.coderclaw-work`                        |
+| Config      | `~/.coderclaw/coderclaw.json` | `~/.coderclaw-work/coderclaw.json`     |
+| Port        | `18789` (or config)       | Set in that instance’s config (e.g. 18790) |
+| Daemon name | “CoderClaw Gateway”       | “CoderClaw Gateway (work)” / `coderclaw-gateway-work` |
+
+So: **two terminals, two versions** — run the right `coderclaw` in each and give each gateway a different port. They can't share one gateway; each gets its own state and port by install path (or by profile / `CODERCLAW_STATE_DIR` if you set them).
 
 ## 🎯 Core Mission
 
@@ -408,7 +458,7 @@ See [examples/phase2/](examples/phase2/) for distributed runtime usage examples.
 
 ## 🔗 CoderClawLink
 
-[CoderClawLink](https://github.com/SeanHogg/coderClawLink) is the companion portal: a Python FastAPI app with a Kanban UI, Telegram bot, GitHub PR automation, and local LLM (Ollama) support. CoderClaw connects to it via the built-in **ClawLink transport adapter** — your multi-agent workflows run seamlessly on a remote CoderClawLink node with zero protocol boilerplate:
+**[Builderforce.ai](https://builderforce.ai)** is the orchestration portal (API: api.builderforce.ai). CoderClaw connects to it via the built-in **ClawLink transport adapter** — your multi-agent workflows run seamlessly on Builderforce with zero protocol boilerplate:
 
 ```typescript
 import { ClawLinkTransportAdapter, CoderClawRuntime } from "coderclaw/transport";
@@ -425,21 +475,21 @@ const state = await runtime.submitTask({
 });
 ```
 
-Full guide: [CoderClawLink Integration](https://docs.coderclaw.ai/coderclaw-link)
+Full guide: [Builderforce Integration](https://docs.coderclaw.ai/coderclaw-link)
 
-### coderClawLink in the coderClaw.ai Ecosystem
+### Builderforce in the coderClaw.ai Ecosystem
 
-coderClawLink is the **centralized orchestration portal** within the coderClaw.ai platform. It **replaces Jira** by giving teams full visibility into AI-driven workflows without changing how they work today — providing workflow visibility, auditability, and human-in-the-loop control that makes adoption seamless across teams of any size.
+CoderClaw **leverages [Builderforce.ai](https://builderforce.ai)** as the **centralized orchestration portal** (API: api.builderforce.ai). Builderforce **replaces Jira** by giving teams full visibility into AI-driven workflows — workflow visibility, auditability, and human-in-the-loop control.
 
 ```
 +-------------------------------------------------------------+
 |                      coderClaw.ai Platform                  |
 |                                                             |
 |  +-----------------+   +------------------------------+    |
-|  |  coderClaw      |   |  coderClawLink               |    |
+|  |  coderClaw      |   |  Builderforce.ai             |    |
 |  |  (core agent)   |<->|  (orchestration portal)      |    |
-|  |                 |   |  app.coderclaw.ai             |    |
-|  |  Self-healing   |   |  api.coderclaw.ai             |    |
+|  |                 |   |  builderforce.ai             |    |
+|  |  Self-healing   |   |  api.builderforce.ai         |    |
 |  |  Multi-agent    |   |                              |    |
 |  |  Persistent mem |   |  Projects, Tasks, Agents     |    |
 |  +--------+--------+   |  Runtime, Audit, RBAC        |    |
@@ -453,7 +503,7 @@ coderClawLink is the **centralized orchestration portal** within the coderClaw.a
 +-------------------------------------------------------------+
 ```
 
-**coderClawLink provides:**
+**Builderforce provides:**
 
 - Workflow visibility and auditability for all agent actions
 - Human-in-the-loop control with approval gates at every autonomous step
@@ -477,22 +527,22 @@ Any state before completion can be cancelled; failure triggers automatic remedia
 
 ### CI/CD Integration
 
-coderClawLink integrates with existing CI/CD workflows. Agents can be triggered on PR events, push events, or scheduled jobs. Execution state callbacks allow CI runners to report progress and attach code-change telemetry:
+Builderforce integrates with existing CI/CD workflows. Agents can be triggered on PR events, push events, or scheduled jobs. Execution state callbacks allow CI runners to report progress and attach code-change telemetry:
 
 ```bash
 # Submit task for execution from a CI/CD pipeline
-curl -X POST https://api.coderclaw.ai/api/runtime/executions \
+curl -X POST https://api.builderforce.ai/api/runtime/executions \
   -H "Authorization: Bearer $CODERCLAW_TOKEN" \
   -d '{"taskId": "...", "agentId": "...", "input": "Review PR #42"}'
 
 # Agent reports completion back
-curl -X PATCH https://api.coderclaw.ai/api/runtime/executions/$ID/state \
+curl -X PATCH https://api.builderforce.ai/api/runtime/executions/$ID/state \
   -d '{"state": "completed", "output": "Review complete: 3 issues found"}'
 ```
 
 ### Private & Self-Hosted Deployments
 
-For compliance-sensitive or air-gapped environments, coderClawLink provides Docker-based self-hosted deployment:
+For compliance-sensitive or air-gapped environments, Builderforce provides Docker-based self-hosted deployment:
 
 ```bash
 # Self-hosted via Docker Compose (dev, deploy, or migrate profiles)
@@ -501,7 +551,7 @@ docker compose --profile deploy up
 
 The entire platform can run on Cloudflare Workers (zero cold-start, globally distributed) backed by your own Postgres database, or entirely on-premises using the provided Dockerfile.
 
-### coderClawLink API Reference (Summary)
+### Builderforce API Reference (Summary)
 
 All protected routes require `Authorization: Bearer <jwt>`.
 
@@ -521,15 +571,15 @@ RBAC roles (ascending authority): `viewer` -> `developer` -> `manager` -> `owner
 
 ## coderClawLLM — AI Agent Compute API
 
-coderClawLLM is the **pay-per-use API layer** for AI agent compute, built into coderClawLink:
+coderClawLLM is the **pay-per-use API layer** for AI agent compute, built into Builderforce:
 
-| Feature               | Detail                                                                    |
-| --------------------- | ------------------------------------------------------------------------- |
-| Free model pool       | Shared, rate-limited pool for development and low-volume workloads        |
-| Pro model pool        | Dedicated, higher-capacity models for production agent pipelines          |
-| OpenAI-compatible API | Drop `https://api.coderclaw.ai/llm/v1` as the `baseURL` in any OpenAI SDK |
-| Tenant-aware billing  | Usage tracked per tenant and per user (`GET /llm/v1/usage`)               |
-| Automatic failover    | Model routing handles provider outages transparently                      |
+| Feature               | Detail                                                                      |
+| --------------------- | --------------------------------------------------------------------------- |
+| Free model pool       | Shared, rate-limited pool for development and low-volume workloads          |
+| Pro model pool        | Dedicated, higher-capacity models for production agent pipelines            |
+| OpenAI-compatible API | Use `https://api.builderforce.ai/llm/v1` as the `baseURL` in any OpenAI SDK |
+| Tenant-aware billing  | Usage tracked per tenant and per user (`GET /llm/v1/usage`)                 |
+| Automatic failover    | Model routing handles provider outages transparently                        |
 
 Agents authenticate with the same JWT issued by `POST /api/auth/token` — no separate credential management needed. The default model is `coderclawllm/auto` for a managed free-model pool with automatic failover.
 
@@ -537,11 +587,11 @@ Agents authenticate with the same JWT issued by `POST /api/auth/token` — no se
 
 ### Startups (5–50 developers)
 
-Use coderClaw.ai as a **virtual AI workforce**: a small human team coordinates a fleet of AI agents that handle code generation, review, testing, and documentation — with coderClawLink as the task board and audit trail. A free tier is available; see [coderclaw.ai](https://coderclaw.ai) for pricing.
+Use coderClaw.ai as a **virtual AI workforce**: a small human team coordinates a fleet of AI agents that handle code generation, review, testing, and documentation — with Builderforce as the task board and audit trail. A free tier is available; see [coderclaw.ai](https://coderclaw.ai) for pricing.
 
 ### Enterprises (100–1,000+ developers)
 
-Run **complex multi-agent pipelines** at scale: parallel execution across hundreds of repositories, strict RBAC for department-level isolation, full audit trails for compliance (SOC 2, HIPAA-adjacent workflows), and private/self-hosted deployment options. Adoption is seamless — coderClawLink slots in as the orchestration layer without disrupting existing developer tooling.
+Run **complex multi-agent pipelines** at scale: parallel execution across hundreds of repositories, strict RBAC for department-level isolation, full audit trails for compliance (SOC 2, HIPAA-adjacent workflows), and private/self-hosted deployment options. Adoption is seamless — Builderforce slots in as the orchestration layer without disrupting existing developer tooling.
 
 ## Star History
 
