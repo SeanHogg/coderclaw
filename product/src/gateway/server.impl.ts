@@ -1,3 +1,4 @@
+import os from "node:os";
 import path from "node:path";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { getActiveEmbeddedRunCount } from "../agents/pi-embedded-runner/runs.js";
@@ -35,6 +36,7 @@ import {
   resolveControlUiRootSync,
 } from "../infra/control-ui-assets.js";
 import { isDiagnosticsEnabled } from "../infra/diagnostic-events.js";
+import { resolveRequiredHomeDir } from "../infra/home-dir.js";
 import { logAcceptedEnvOption } from "../infra/env.js";
 import { createExecApprovalForwarder } from "../infra/exec-approval-forwarder.js";
 import { onHeartbeatEvent } from "../infra/heartbeat-events.js";
@@ -250,8 +252,17 @@ export async function startGatewayServer(
   );
   initSubagentRegistry();
 
-  // Ensure .coderclaw/ project directory exists
-  const projectRoot = process.cwd();
+  // Ensure .coderclaw/ project directory exists.
+  // When the gateway runs as a Windows scheduled task without a working directory,
+  // process.cwd() is System32 and mkdir fails with EPERM. Use home as fallback.
+  let projectRoot = process.cwd();
+  if (
+    process.platform === "win32" &&
+    (projectRoot.includes("System32") || projectRoot.includes("SysWOW64"))
+  ) {
+    projectRoot = resolveRequiredHomeDir(process.env, os.homedir);
+    log.info(`gateway: cwd was system dir; using ${projectRoot} as project root`);
+  }
   if (!(await isCoderClawProject(projectRoot))) {
     log.info("gateway: initialising .coderclaw/ project directory");
     await initializeCoderClawProject(projectRoot);

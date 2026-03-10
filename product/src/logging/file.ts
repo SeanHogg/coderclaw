@@ -284,6 +284,34 @@ function isRollingPath(file: string): boolean {
   );
 }
 
+/**
+ * Append a gateway lifecycle audit line to the default log file.
+ * Used by daemon CLI (gateway start/restart) so that user-initiated actions
+ * are visible in logs even if the gateway crashes before writing its own logs.
+ */
+export function appendGatewayLifecycleAudit(params: {
+  action: "start" | "restart" | "stop";
+  source?: string;
+}): void {
+  try {
+    const logDir = DEFAULT_LOG_DIR;
+    fs.mkdirSync(logDir, { recursive: true });
+    const logPath = defaultRollingPathForToday();
+    const time = new Date().toISOString();
+    const line = JSON.stringify({
+      time,
+      level: "info",
+      loggerName: "daemon-cli",
+      message: `gateway ${params.action} requested${params.source ? ` (${params.source})` : ""}`,
+      action: params.action,
+      source: params.source ?? "coderclaw gateway",
+    }) + "\n";
+    fs.appendFileSync(logPath, line, { encoding: "utf8" });
+  } catch {
+    // never block on logging failures
+  }
+}
+
 function pruneOldRollingLogs(dir: string): void {
   try {
     const entries = fs.readdirSync(dir, { withFileTypes: true });

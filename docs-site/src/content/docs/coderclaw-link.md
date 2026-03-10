@@ -155,6 +155,22 @@ The Gantt view shows all tasks as horizontal timeline bars. Tasks without explic
 - **Today marker** shows the current date as a red vertical line
 - Click any bar or row to open the task edit modal
 
+## Task assignment flow (Builderforce → claw)
+
+When you create or assign a task in Builderforce to a claw, the following happens. The table also shows **where in the app** you see each part of the flow.
+
+| Step | Where | What happens | Where user sees it |
+|------|--------|----------------|---------------------|
+| 1 | **Builderforce** | Task created (title, description, optional artifacts: skills, personas, content; task ID, execution ID). | **Tasks** (Kanban / List / Gantt), task edit modal. |
+| 2 | **Builderforce** | Assignment sent to the claw over the upstream WebSocket (`task.assign` or `task.broadcast`). | Task appears as assigned to that claw; assignment may be triggered from task modal or **Workforce**. |
+| 3 | **Claw (relay)** | Relay receives message; calls `artifacts.sync` then `chat.send` for the main session. | — (backend). |
+| 4 | **Claw (gateway)** | Artifacts applied; agent runs for the new user message (streaming, tools). | **CoderClaw TUI or WebChat**: new user message with task title/description; agent response streams as usual. |
+| 5 | **Claw (relay)** | All chat events (deltas, messages, tool use) forwarded back over the upstream WebSocket to Builderforce. | — (relay). |
+| 6 | **Builderforce** | `ClawRelayDO` receives events and **broadcasts** them to every browser client connected to that claw’s WebSocket (`/api/claws/:id/ws`). | **Builderforce UI → Claw panel** (slide-out from **Dashboard**, **Projects**, or **Workforce** when you click a claw). The live stream is delivered on that connection. Today: **Debug** tab uses it for Status/Health and manual RPC; **Observability** tab (Logs / Timeline) is the intended place for execution and task flow (Timeline is placeholder until execution data is wired). New clients also get a **chat.history** replay and complete messages are persisted for future task/activity views. |
+| 7 | **Builderforce** | Run “complete” when the agent sends a final message; no separate completion API call from the claw. | Builderforce infers completion from the stream; you see the final reply in **CoderClaw TUI/WebChat** and, when implemented, in the Claw panel’s execution/Timeline view. |
+
+So for **#6 (where you see the artifact)**: open the **Claw panel** for that claw (from Dashboard, Projects, or Workforce). The relay stream is available on the same WebSocket the **Debug** tab uses; a dedicated task/execution or **Observability → Timeline** view would show the live agent output (Timeline is placeholder today).
+
 ## Connecting CoderClaw to Builderforce
 
 CoderClaw connects to Builderforce in two ways simultaneously when the gateway starts.

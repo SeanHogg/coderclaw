@@ -1,5 +1,7 @@
+import os from "node:os";
 import { formatCliCommand } from "../cli/command-format.js";
 import { collectConfigEnvVars } from "../config/env-vars.js";
+import { resolveRequiredHomeDir } from "../infra/home-dir.js";
 import type { CoderClawConfig } from "../config/types.js";
 import { resolveGatewayLaunchAgentLabel } from "../daemon/constants.js";
 import { resolveGatewayProgramArguments } from "../daemon/program-args.js";
@@ -41,12 +43,18 @@ export async function buildGatewayInstallPlan(params: {
       env: params.env,
       runtime: params.runtime,
     }));
-  const { programArguments, workingDirectory } = await resolveGatewayProgramArguments({
+  let { programArguments, workingDirectory } = await resolveGatewayProgramArguments({
     port: params.port,
     dev: devMode,
     runtime: params.runtime,
     nodePath,
   });
+  // On Windows, when the task has no working directory, schtasks defaults to System32.
+  // The gateway uses process.cwd() for the project root and fails to create .coderclaw there.
+  // Use the user's home as a safe default so the gateway can start.
+  if (!workingDirectory && process.platform === "win32") {
+    workingDirectory = resolveRequiredHomeDir(params.env, os.homedir);
+  }
   await emitNodeRuntimeWarning({
     env: params.env,
     runtime: params.runtime,

@@ -12,6 +12,7 @@ import {
 } from "./logging/console.js";
 import type { LoggerResolvedSettings, LoggerSettings, PinoLikeLogger } from "./logging/file.js";
 import {
+  appendGatewayLifecycleAudit,
   DEFAULT_LOG_DIR,
   DEFAULT_LOG_FILE,
   getChildLogger,
@@ -147,6 +148,7 @@ export function logDebug(message: string) {
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
 export {
+  appendGatewayLifecycleAudit,
   enableConsoleCapture,
   getConsoleSettings,
   getResolvedConsoleSettings,

@@ -735,13 +735,64 @@ export function createCommandHandlers(context: CommandHandlerContext) {
       }
       case "gateway":
       case "daemon": {
-        const actionRaw = args.trim().toLowerCase();
+        const parts = args.trim().split(/\s+/);
+        const actionRaw = parts[0]?.toLowerCase() ?? "";
         if (!actionRaw) {
-          chatLog.addSystem("usage: /gateway <status|start|stop|restart>");
+          chatLog.addSystem("usage: /gateway <status|start|stop|restart|token <value>>");
+          break;
+        }
+        if (actionRaw === "token") {
+          const tokenValue = parts.slice(1).join(" ").trim();
+          if (!tokenValue) {
+            chatLog.addSystem("usage: /gateway token <value> — set gateway.auth.token and sync to service");
+            chatLog.addSystem(
+              "Use when you see 'Config token differs from service token'. Run /gateway restart after.",
+            );
+            break;
+          }
+          try {
+            chatLog.addSystem("Setting gateway token and syncing to service…");
+            tui.requestRender();
+            const cfg = loadConfig();
+            const updated: CoderClawConfig = {
+              ...cfg,
+              gateway: {
+                ...cfg.gateway,
+                auth: {
+                  ...cfg.gateway?.auth,
+                  mode: "token",
+                  token: tokenValue,
+                },
+              },
+            };
+            await writeConfigFile(updated);
+            if (context.config) {
+              context.config.gateway = updated.gateway;
+            }
+            const installResult = await runCliCommand(["gateway", "install", "--force"]);
+            if (installResult.ok) {
+              chatLog.addSystem("Gateway token updated and synced to service.");
+              chatLog.addSystem("Run /gateway restart to apply.");
+            } else {
+              chatLog.addSystem("Token saved to config; sync failed:");
+              for (const line of installResult.lines) {
+                chatLog.addSystem(line);
+              }
+              const errText = installResult.lines.join(" ").toLowerCase();
+              if (errText.includes("access is denied") || errText.includes("administrator")) {
+                chatLog.addSystem(
+                  "To sync: run PowerShell as Administrator, then: coderclaw gateway install --force",
+                );
+              }
+              chatLog.addSystem("Run /gateway restart after syncing (or if gateway runs in foreground).");
+            }
+          } catch (err) {
+            chatLog.addSystem(`gateway token failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
           break;
         }
         if (!["status", "start", "stop", "restart"].includes(actionRaw)) {
-          chatLog.addSystem("usage: /gateway <status|start|stop|restart>");
+          chatLog.addSystem("usage: /gateway <status|start|stop|restart|token <value>>");
           break;
         }
         const action = actionRaw as "status" | "start" | "stop" | "restart";

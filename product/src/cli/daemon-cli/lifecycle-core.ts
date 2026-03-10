@@ -1,6 +1,7 @@
 import { loadConfig } from "../../config/config.js";
 import { resolveIsNixMode } from "../../config/paths.js";
 import { checkTokenDrift } from "../../daemon/service-audit.js";
+import { appendGatewayLifecycleAudit } from "../../logging.js";
 import type { GatewayService } from "../../daemon/service.js";
 import { renderSystemdUnavailableHints } from "../../daemon/systemd-hints.js";
 import { isSystemdUserServiceAvailable } from "../../daemon/systemd.js";
@@ -177,6 +178,7 @@ export async function runServiceStart(params: {
     });
     return;
   }
+  appendGatewayLifecycleAudit({ action: "start", source: "coderclaw gateway start" });
   try {
     await params.service.restart({ env: process.env, stdout });
   } catch (err) {
@@ -226,6 +228,7 @@ export async function runServiceStop(params: {
     }
     return;
   }
+  appendGatewayLifecycleAudit({ action: "stop", source: "coderclaw gateway stop" });
   try {
     await params.service.stop({ env: process.env, stdout });
   } catch (err) {
@@ -305,6 +308,7 @@ export async function runServiceRestart(params: {
     }
   }
 
+  appendGatewayLifecycleAudit({ action: "restart", source: "coderclaw gateway restart" });
   try {
     await params.service.restart({ env: process.env, stdout });
     let restarted = true;
