@@ -72,6 +72,10 @@ type ClawLinkSkillResponse = {
   metadata?: Record<string, unknown> | null;
 };
 
+type ClawLinkSkillsEnvelope = {
+  skills: ClawLinkSkillResponse[];
+};
+
 // ---------------------------------------------------------------------------
 // Adapter
 // ---------------------------------------------------------------------------
@@ -254,11 +258,18 @@ export class ClawLinkTransportAdapter implements TransportAdapter {
     if (this.deviceId) {
       params.set("device_id", this.deviceId);
     }
-    const skills = await this.post<ClawLinkSkillResponse[]>(
-      `${this.baseUrl}/api/skills${params.size > 0 ? `?${params}` : ""}`,
+
+    // Prefer the claw-scoped skills endpoint when we know our claw id.
+    const endpoint = this.clawId != null
+      ? `${this.baseUrl}/api/claws/${this.clawId}/skills`
+      : `${this.baseUrl}/api/skills`;
+
+    const response = await this.post<ClawLinkSkillResponse[] | ClawLinkSkillsEnvelope>(
+      `${endpoint}${params.size > 0 ? `?${params}` : ""}`,
       null,
       "GET",
     );
+    const skills = Array.isArray(response) ? response : response.skills;
     return skills.map((s) => ({
       id: s.skill_id,
       name: s.name,
@@ -284,6 +295,9 @@ export class ClawLinkTransportAdapter implements TransportAdapter {
     };
     if (this.authToken) {
       headers.Authorization = `Bearer ${this.authToken}`;
+    }
+    if (this.clawId != null) {
+      headers['X-Claw-Id'] = String(this.clawId);
     }
 
     const init: RequestInit = {

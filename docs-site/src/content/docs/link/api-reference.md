@@ -166,9 +166,22 @@ A **Claw** is a registered coderClaw runtime connected to a tenant. Claws authen
 
 ### WebSocket relay
 
+#### Browser client (portal)
+
 ```
-GET wss://api.coderclaw.ai/api/relay/:clawId?key=<clawApiKey>
+GET wss://api.coderclaw.ai/api/claws/:clawId/ws?token=<jwt>
 ```
+
+- The portal uses the tenant JWT (`token=`) to authenticate.
+- The server validates the JWT and ensures it belongs to the same tenant as the claw.
+
+#### CoderClaw runtime (upstream)
+
+```
+GET wss://api.coderclaw.ai/api/claws/:clawId/upstream?key=<clawApiKey>
+```
+
+- The Claw authenticates using its API key (query param `key=`).
 
 Bi-directional real-time channel between the portal and the coderClaw runtime. See [WebSocket Relay Frames](#websocket-relay-frames).
 
@@ -197,6 +210,19 @@ PENDING → SUBMITTED → RUNNING → COMPLETED
                               └→ FAILED
 PENDING / SUBMITTED / RUNNING → CANCELLED
 ```
+
+> **Legacy compatibility:** The older ClawLink transport adapter uses legacy paths (`/api/runtime/sessions`, `/api/runtime/tasks/submit`, etc.). Builderforce supports those for backward compatibility.
+
+**Legacy endpoints (ClawLink compatibility)**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/runtime/sessions` | Create a session (returns `sessionId`) |
+| `POST` | `/api/runtime/tasks/submit` | Submit a task for execution (same body as `/api/runtime/executions`) |
+| `GET` | `/api/runtime/tasks/:id/state` | Get execution state (alias for `/api/runtime/executions/:id`) |
+| `POST` | `/api/runtime/tasks/:id/cancel` | Cancel execution (alias for `/api/runtime/executions/:id/cancel`) |
+
+---
 
 | Method | Path | Description |
 |--------|------|-------------|
